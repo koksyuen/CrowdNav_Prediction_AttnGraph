@@ -34,6 +34,7 @@ def main():
 	elif not algo_args.overwrite:
 		raise ValueError('output_dir already exists!')
 
+	# save configuration files to output directory
 	save_config_dir = os.path.join(algo_args.output_dir, 'configs')
 	if not os.path.exists(save_config_dir):
 		os.makedirs(save_config_dir)
@@ -44,6 +45,9 @@ def main():
 
 	env_config = config = Config()
 
+
+	##### Setting for reproducible of the result of the paper #####
+	# manually set the random seed for training (paper used seed = 1)
 	torch.manual_seed(algo_args.seed)
 	torch.cuda.manual_seed_all(algo_args.seed)
 	if algo_args.cuda:
@@ -55,7 +59,7 @@ def main():
 			# not reproducible but faster
 			torch.backends.cudnn.benchmark = True
 			torch.backends.cudnn.deterministic = False
-
+	###############################################################
 
 
 	torch.set_num_threads(algo_args.num_threads)

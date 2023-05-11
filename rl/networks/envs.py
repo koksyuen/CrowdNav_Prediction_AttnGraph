@@ -39,12 +39,14 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets, config=None, envNu
             _, domain, task = env_id.split('.')
             env = dm_control2gym.make(domain_name=domain, task_name=task)
         else:
-            env = gym.make(env_id)
+            env = gym.make(env_id) # simulator for crowd navigation
 
+        ############ Ignore (for Atari) ########################
         is_atari = hasattr(gym.envs, 'atari') and isinstance(
             env.unwrapped, gym.envs.atari.atari_env.AtariEnv)
         if is_atari:
             env = make_atari(env_id)
+        ########################################################
 
         env.configure(config)
 
