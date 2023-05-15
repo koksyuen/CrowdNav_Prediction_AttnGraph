@@ -29,3 +29,8 @@ register(
     id='rosTurtlebot2iEnv-v0',
     entry_point='crowd_sim.envs.ros_turtlebot2i_env:rosTurtlebot2iEnv',
 )
+
+register(
+    id='CrowdSimSgan-v0',
+    entry_point='crowd_sim.envs:CrowdSimSgan',
+)

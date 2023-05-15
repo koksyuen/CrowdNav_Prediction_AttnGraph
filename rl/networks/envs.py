@@ -59,7 +59,8 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets, config=None, envNu
         env.seed(seed + rank) # seed for openAI gym environment
 
         # the number of env will be set when the env is created.
-        # because the human crossing cases are controlled by random seed, we will calculate unique random seed for each parallel env.
+        # because the human crossing cases are controlled by random seed,
+        # we will calculate unique random seed for each parallel env.
         env.nenv = envNum
 
         if envNum > 1:

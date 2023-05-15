@@ -58,7 +58,7 @@ Configuration for:
       - `'srnn'`: Decentralized Structural-RNN for Robot Crowd Navigation with Deep Reinforcement Learning
       - `'selfAttn_merge_srnn'`: Intention Aware Robot Crowd Navigation with Attention-Based Interaction Graph
    - `radius`:
-   - `v_pref`:
+   - `v_pref`: maximum velocity ??
    - `sensor`:
       - `'coordinate'`: 
    - `FOV`: this values * PI
