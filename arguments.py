@@ -6,6 +6,9 @@ import torch
 def get_args():
     parser = argparse.ArgumentParser(description='RL')
 
+    # for jupyter notebook only (remember to comment out when not using jupyter notebook)
+    parser.add_argument('-f')
+
     # the saving directory for train.py
     parser.add_argument(
         '--output_dir', type=str, default='trained_models/my_model')
@@ -206,7 +209,7 @@ def get_args():
     parser.add_argument('--sort_humans', type=bool, default=True)
 
 
-    args = parser.parse_args()
+    args = parser.parse_args([])
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 

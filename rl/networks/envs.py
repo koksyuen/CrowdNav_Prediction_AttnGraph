@@ -48,22 +48,33 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets, config=None, envNu
             env = make_atari(env_id)
         ########################################################
 
+        # custom function - pass args into environment
         env.configure(config)
 
-        envSeed = seed + rank if seed is not None else None
         # environment.render_axis = ax
-        env.thisSeed = envSeed
+
+        # For multiprocessing, every process (thread) must have different seed for efficient exploration
+        envSeed = seed + rank if seed is not None else None
+        env.thisSeed = envSeed # seed for numpy
+        env.seed(seed + rank) # seed for openAI gym environment
+
+        # the number of env will be set when the env is created.
+        # because the human crossing cases are controlled by random seed, we will calculate unique random seed for each parallel env.
         env.nenv = envNum
+
         if envNum > 1:
             env.phase = 'train'
         else:
             env.phase = 'test'
 
+        # For rendering
         if ax:
             env.render_axis = ax
+            # the test case ID, which will be used to calculate a seed to generate a human crossing case
             if test_case >= 0:
                 env.test_case = test_case
-        env.seed(seed + rank)
+
+
 
         if str(env.__class__.__name__).find('TimeLimit') >= 0:
             env = TimeLimitMask(env)

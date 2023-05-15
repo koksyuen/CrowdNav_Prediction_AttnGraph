@@ -103,6 +103,7 @@ class CrowdSim(gym.Env):
         self.case_capacity = {'train': np.iinfo(np.uint32).max - 2000, 'val': 1000, 'test': 1000}
         self.case_size = {'train': np.iinfo(np.uint32).max - 2000, 'val': self.config.env.val_size,
                           'test': self.config.env.test_size}
+
         self.circle_radius = config.sim.circle_radius
         self.human_num = config.sim.human_num
 
