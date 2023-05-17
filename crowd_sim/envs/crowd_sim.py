@@ -208,7 +208,7 @@ class CrowdSim(gym.Env):
         """Generate a human: generate start position on a circle, goal position is at the opposite side"""
         human = Human(self.config, 'humans')
         if self.randomize_attributes:
-            human.sample_random_attributes()
+            human.sample_random_attributes() # random v_pref (v_max) and radius of human
 
         while True:
             angle = np.random.random() * np.pi * 2
@@ -236,6 +236,7 @@ class CrowdSim(gym.Env):
         # px = np.random.uniform(-6, 6)
         # py = np.random.uniform(-3, 3.5)
         # human.set(px, py, px, py, 0, 0, 0)
+        # def set(self, px, py, gx, gy, vx, vy, theta, radius=None, v_pref=None)
         human.set(px, py, -px, -py, 0, 0, 0)
         return human
 
@@ -292,17 +293,19 @@ class CrowdSim(gym.Env):
         if human_num is None:
             human_num = self.human_num
 
+        """ randomize starting position and goal position of robot """
         if self.robot.kinematics == 'unicycle':
             angle = np.random.uniform(0, np.pi * 2)
             px = self.circle_radius * np.cos(angle)
             py = self.circle_radius * np.sin(angle)
             while True:
                 gx, gy = np.random.uniform(-self.circle_radius, self.circle_radius, 2)
+                # 6units == 1 meter?
                 if np.linalg.norm([px - gx, py - gy]) >= 6:  # 1 was 6
                     break
-            self.robot.set(px, py, gx, gy, 0, 0, np.random.uniform(0, 2*np.pi)) # randomize init orientation
-
-        # randomize starting position and goal position
+            # def set(self, px, py, gx, gy, vx, vy, theta, radius=None, v_pref=None)
+            self.robot.set(px, py, gx, gy, 0, 0, np.random.uniform(0, 2*np.pi)) # randomize initial orientation (theta)
+        # robot.kinematics: holonomic
         else:
             while True:
                 px, py, gx, gy = np.random.uniform(-self.circle_radius, self.circle_radius, 4)
@@ -311,7 +314,7 @@ class CrowdSim(gym.Env):
             self.robot.set(px, py, gx, gy, 0, 0, np.pi/2)
 
 
-        # generate humans
+        ## generate humans
         self.generate_random_human_position(human_num=human_num)
 
 
@@ -407,7 +410,7 @@ class CrowdSim(gym.Env):
         # get current observation
         ob = self.generate_ob(reset=True)
 
-        # initialize potential
+        # initialize potential (distance to goal) award
         self.potential = -abs(np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy])))
 
 

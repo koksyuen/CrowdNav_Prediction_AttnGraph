@@ -20,7 +20,7 @@ Configuration for:
     - `discomfort_penalty_factor`:
     - `gamma`:
 4. simulation `sim`:
-    - `circle_radius`: 
+    - `circle_radius`: radius of circle crossing
     - `arena_size`: 
     - `human_num`: number of pedestrians
     - `human_num_range`: 

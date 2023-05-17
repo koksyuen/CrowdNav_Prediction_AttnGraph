@@ -16,7 +16,7 @@ class Config(object):
     # general configs for OpenAI gym env
     env = BaseConfig()
     env.time_limit = 50
-    env.time_step = 0.25
+    env.time_step = 0.25 # second per frame
     env.val_size = 100
     env.test_size = 500
     # if randomize human behaviors, set to True, else set to False
@@ -110,7 +110,7 @@ class Config(object):
     # action space of the robot
     action_space = BaseConfig()
     # holonomic or unicycle
-    action_space.kinematics = "holonomic"
+    action_space.kinematics = "unicycle"
 
     # config for ORCA
     orca = BaseConfig()

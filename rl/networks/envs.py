@@ -71,7 +71,9 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets, config=None, envNu
         # For rendering
         if ax:
             env.render_axis = ax
+            # FOR TESTING ONLY (NOT TRAINING)
             # the test case ID, which will be used to calculate a seed to generate a human crossing case
+            # if -1, it will run 500 different cases; if >=0, it will run the specified test case repeatedly
             if test_case >= 0:
                 env.test_case = test_case
 
