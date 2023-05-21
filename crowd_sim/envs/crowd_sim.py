@@ -99,17 +99,32 @@ class CrowdSim(gym.Env):
         self.discomfort_dist = config.reward.discomfort_dist
         self.discomfort_penalty_factor = config.reward.discomfort_penalty_factor
 
+        """ SEED FOR RANDOMISATION """
 
+        # seed made up of 32bit int, thus 32bit int of seed is divided into 3 parts:
+        #     - val: 1000
+        #     - test: 1000
+        #     - train: remaining
+        # case capacity: the maximum number for train(max possible int -2000), val(1000), and test(1000)
         self.case_capacity = {'train': np.iinfo(np.uint32).max - 2000, 'val': 1000, 'test': 1000}
+
+        # case size is used to make sure that the case_counter is always between 0 and case_size[phase]
+        # case size:
+        #     - train: remaining size
+        #     - validation: specified by user
+        #     - test: specified by user
         self.case_size = {'train': np.iinfo(np.uint32).max - 2000, 'val': self.config.env.val_size,
                           'test': self.config.env.test_size}
+
+        self.case_counter = {'train': 0, 'test': 0, 'val': 0}
+
+        """"""
 
         self.circle_radius = config.sim.circle_radius
         self.human_num = config.sim.human_num
 
         self.arena_size = config.sim.arena_size
 
-        self.case_counter = {'train': 0, 'test': 0, 'val': 0}
 
         logging.info('human number: {}'.format(self.human_num))
         if self.randomize_attributes:
@@ -152,7 +167,11 @@ class CrowdSim(gym.Env):
         if self.end_goal_changing:
             self.end_goal_change_chance = config.humans.end_goal_change_chance
 
+        """" Human states database """
+        # include all humans (visible & non-visible)
+        # observable state of a human = px, py, vx, vy, radius (5 variables)
         self.last_human_states = np.zeros((self.human_num, 5))
+        """"""
 
         self.predict_steps = config.sim.predict_steps
         self.human_num_range = config.sim.human_num_range
@@ -190,8 +209,7 @@ class CrowdSim(gym.Env):
 
 
     def set_robot(self, robot):
-        raise NotImplementedError
-
+        pass
 
     def generate_random_human_position(self, human_num):
         """
@@ -255,15 +273,16 @@ class CrowdSim(gym.Env):
         # keep the order of 5 humans at each timestep
         for i in range(self.human_num):
             if human_visibility[i]:
+                # observable state of a human = px, py, vx, vy, radius
                 humanS = np.array(self.humans[i].get_observable_state_list())
                 self.last_human_states[i, :] = humanS
 
             else:
-                if reset:
+                if reset: # temporary fake human's state (bcuz this human haven't being detected yet)
                     humanS = np.array([15., 15., 0., 0., 0.3])
                     self.last_human_states[i, :] = humanS
 
-                else:
+                else: # if a human is not visible
                     # Plan A: linear approximation of human's next position
                     px, py, vx, vy, r = self.last_human_states[i, :]
                     px = px + vx * self.time_step
@@ -277,7 +296,10 @@ class CrowdSim(gym.Env):
                     # humanS = np.array([15., 15., 0., 0., 0.3])
                     # self.last_human_states[i, :] = humanS
 
-    # return the ground truth locations of all humans
+    """
+    For training of trajectory predictor (not related to RL)
+    return the ground truth locations of all humans
+    """
     def get_true_human_states(self):
         true_human_states = np.zeros((self.human_num, 2))
         for i in range(self.human_num):
@@ -318,9 +340,8 @@ class CrowdSim(gym.Env):
         self.generate_random_human_position(human_num=human_num)
 
 
-
+    """ mimic the dynamics of Turtlebot2i for sim2real """
     def smooth_action(self, action):
-        """ mimic the dynamics of Turtlebot2i for sim2real """
         # if action.r is delta theta
         w = action.r / self.time_step
         # if action.r is w
@@ -368,51 +389,66 @@ class CrowdSim(gym.Env):
     def reset(self, phase='train', test_case=None):
         """
         Reset the environment
-        :return:
+        :return: observation
         """
+
+        if self.robot is None:
+            raise AttributeError('robot has to be set!')
+
+        """ SEED FOR RANDOMISATION """
 
         if self.phase is not None:
             phase = self.phase
         if self.test_case is not None:
             test_case=self.test_case
 
-        if self.robot is None:
-            raise AttributeError('robot has to be set!')
         assert phase in ['train', 'val', 'test']
+
+        # test case is passed in to calculate specific seed to generate case
+        # by default, case counter start from 0 without specifying test case
         if test_case is not None:
-            self.case_counter[phase] = test_case # test case is passed in to calculate specific seed to generate case
-        self.global_time = 0
-        self.step_counter=0
+            self.case_counter[phase] = test_case
 
-
-        self.humans = []
         # train, val, and test phase should start with different seed.
-        # case capacity: the maximum number for train(max possible int -2000), val(1000), and test(1000)
-        # val start from seed=0, test start from seed=case_capacity['val']=1000
-        # train start from self.case_capacity['val'] + self.case_capacity['test']=2000
+        # seed made up of 32bit int, thus the seed used for:
+        #     - validation: 0 - 999
+        #     - testing:    1000 - 1999
+        #     - training:   2000 - (max size of 32bit int)
         counter_offset = {'train': self.case_capacity['val'] + self.case_capacity['test'],
                           'val': 0, 'test': self.case_capacity['val']}
 
+        # print('phase: {}   counter_offset: {}   case_counter: {}   seed: {}'.format(phase, counter_offset[phase], self.case_counter[phase], self.thisSeed))
+
         np.random.seed(counter_offset[phase] + self.case_counter[phase] + self.thisSeed)
 
-        self.generate_robot_humans(phase)
+        # case size is used to make sure that the case_counter is always between 0 and case_size[phase]
+        # The % operator ensures the counter variable loops to beginning once it reaches the end
+        # To prevent errors due to boundary conditions of the seed (32bit int)
+        self.case_counter[phase] = (self.case_counter[phase] + int(1*self.nenv)) % self.case_size[phase]
+
+        """"""
 
 
+        """ Initialisation """
+
+        self.humans = [] # remove all humans at the beginning of an episode
+        self.global_time = 0
+        self.step_counter=0
+
+        # default time step: 0.25s
         for agent in [self.robot] + self.humans:
             agent.time_step = self.time_step
             agent.policy.time_step = self.time_step
 
+        self.generate_robot_humans(phase)
 
-        # case size is used to make sure that the case_counter is always between 0 and case_size[phase]
-        self.case_counter[phase] = (self.case_counter[phase] + int(1*self.nenv)) % self.case_size[phase]
+        """"""
 
-
-        # get current observation
+        # get first observation
         ob = self.generate_ob(reset=True)
 
-        # initialize potential (distance to goal) award
+        # initialize potential (distance to goal) reward
         self.potential = -abs(np.linalg.norm(np.array([self.robot.px, self.robot.py]) - np.array([self.robot.gx, self.robot.gy])))
-
 
         return ob
 
@@ -423,8 +459,8 @@ class CrowdSim(gym.Env):
         # Update humans' goals randomly
         for human in self.humans:
             if human.isObstacle or human.v_pref == 0:
-                continue
-            if np.random.random() <= self.goal_change_chance:
+                continue # human (static) / wall no need to change goal
+            if np.random.random() <= self.goal_change_chance: # possibility of random goal changing
                 humans_copy = []
                 for h in self.humans:
                     if h != human:
@@ -432,7 +468,7 @@ class CrowdSim(gym.Env):
 
 
                 # Produce valid goal for human in case of circle setting
-                while True:
+                while True: # keep on generating random goal until no collision
                     angle = np.random.random() * np.pi * 2
                     # add some noise to simulate all the possible cases robot could meet with human
                     v_pref = 1.0 if human.v_pref == 0 else human.v_pref
@@ -442,16 +478,16 @@ class CrowdSim(gym.Env):
                     gy = self.circle_radius * np.sin(angle) + gy_noise
                     collide = False
 
-                    for agent in [self.robot] + humans_copy:
+                    for agent in [self.robot] + humans_copy: # detect collision with robot & other pedestrians
                         min_dist = human.radius + agent.radius + self.discomfort_dist
                         if norm((gx - agent.px, gy - agent.py)) < min_dist or \
                                 norm((gx - agent.gx, gy - agent.gy)) < min_dist:
                             collide = True
                             break
-                    if not collide:
+                    if not collide: # no collision with all other agents
                         break
 
-                # Give human new goal
+                # Give human new (valid) goal
                 human.gx = gx
                 human.gy = gy
         return
@@ -510,13 +546,15 @@ class CrowdSim(gym.Env):
         offset = np.arccos(np.clip(np.dot(v_fov, v_12), a_min=-1, a_max=1))
         return offset
 
-    # Caculate whether agent2 is in agent1's FOV
-    # Not the same as whether agent1 is in agent2's FOV!!!!
-    # arguments:
-    # state1, state2: can be agent instance OR state instance
-    # robot1: is True if state1 is robot, else is False
-    # return value:
-    # return True if state2 is visible to state1, else return False
+    """
+    Caculate whether agent2 is in agent1's FOV
+    Not the same as whether agent1 is in agent2's FOV!!!!
+    arguments:
+    state1, state2: can be agent instance OR state instance
+    robot1: is True if state1 is robot, else is False
+    return value:
+    return True if state2 is visible to state1, else return False
+    """
     def detect_visible(self, state1, state2, robot1 = False, custom_fov=None, custom_sensor_range=None):
         if self.robot.kinematics == 'holonomic':
             real_theta = np.arctan2(state1.vy, state1.vx)
@@ -553,15 +591,19 @@ class CrowdSim(gym.Env):
         else:
             if robot1:
                 inSensorRange = dist <= self.robot.sensor_range
-            else:
+            else: # Humans have infinite sensor range
                 inSensorRange = True
 
         return (inFov and inSensorRange)
 
 
-    # for robot:
-    # return only visible humans to robot and number of visible humans
-    # and a list of True/False to indicate whether each human is visible
+    """
+    For robot only
+    :return:
+        - list of visible humans (obj) to robot 
+        - number of visible humans
+        - human_ids: a list of True/False to indicate whether each human is visible
+    """
     def get_num_human_in_fov(self):
         human_ids = []
         humans_in_view = []
@@ -578,12 +620,10 @@ class CrowdSim(gym.Env):
 
         return humans_in_view, num_humans_in_view, human_ids
 
-
-
+    '''
+    convert self.last_human_states to a list of observable state objects for old algorithms to use
+    '''
     def last_human_states_obj(self):
-        '''
-        convert self.last_human_states to a list of observable state objects for old algorithms to use
-        '''
         humans = []
         for i in range(self.human_num):
             h = ObservableState(*self.last_human_states[i])
@@ -594,7 +634,7 @@ class CrowdSim(gym.Env):
     # calculate the reward at current timestep R(s, a)
     def calc_reward(self, action):
         # collision detection
-        dmin = float('inf')
+        dmin = float('inf') # for discomfort distance penalty
 
         danger_dists = []
         collision = False
@@ -614,24 +654,25 @@ class CrowdSim(gym.Env):
                 dmin = closest_dist
 
 
-        # check if reaching the goal
+        # check if reached the goal
         reaching_goal = norm(np.array(self.robot.get_position()) - np.array(self.robot.get_goal_position())) < self.robot.radius
 
-        if self.global_time >= self.time_limit - 1:
+        if self.global_time >= self.time_limit - 1: # reached termination state (time limit for one episode)
             reward = 0
             done = True
             episode_info = Timeout()
-        elif collision:
+        elif collision: # termination state (collision)
             reward = self.collision_penalty
             done = True
             episode_info = Collision()
-        elif reaching_goal:
+        elif reaching_goal: # termination state (reached goal)
             reward = self.success_reward
             done = True
             episode_info = ReachGoal()
 
         elif dmin < self.discomfort_dist:
             # only penalize agent for getting too close if it's visible
+            # only take one pedestrian (minimum distance) into account
             # adjust the reward based on FPS
             # print(dmin)
             reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
@@ -666,7 +707,13 @@ class CrowdSim(gym.Env):
 
         return reward, done, episode_info
 
-    # compute the observation
+    """
+    Compute the observation
+    :return: a 1D numpy array that consists of:
+        - number of visible humans
+        - parameter of robot: px, py, vx, vy, radius, gx, gy, v_pref, theta
+        - database of humans' states (includes visible & non-visible humans): px, py, vx, vy, radius  
+    """
     def generate_ob(self, reset):
         visible_human_states, num_visible_humans, human_visibility = self.get_num_human_in_fov()
         self.update_last_human_states(human_visibility, reset=reset)
@@ -674,12 +721,13 @@ class CrowdSim(gym.Env):
             ob = [num_visible_humans]
             # append robot's state
             robotS = np.array(self.robot.get_full_state_list())
-            ob.extend(list(robotS))
+            ob.extend(list(robotS)) # 9 states
 
-            ob.extend(list(np.ravel(self.last_human_states)))
-            ob = np.array(ob)
+            ob.extend(list(np.ravel(self.last_human_states))) #flatten to 1D array
+            ob = np.array(ob) # (num_of_humans * 5) states
 
         else: # for orca and sf
+            # convert self.last_human_states to a list of observable state objects for old algorithms to use
             ob = self.last_human_states_obj()
 
         return ob
@@ -696,7 +744,7 @@ class CrowdSim(gym.Env):
                     # Else detectable humans are always observable to each other
                     if self.detect_visible(human, other_human):
                         ob.append(other_human.get_observable_state())
-                    else:
+                    else: # out of human's fov (note: human has infinite sensor range)
                         ob.append(self.dummy_human.get_observable_state())
 
             if self.robot.visible:
@@ -717,6 +765,7 @@ class CrowdSim(gym.Env):
         # clip the action to obey robot's constraint
         action = self.robot.policy.clip_action(action, self.robot.v_pref)
 
+        # humans perform action first
         human_actions = self.get_human_actions()
 
 
@@ -742,7 +791,7 @@ class CrowdSim(gym.Env):
 
         # Update all humans' goals randomly midway through episode
         if self.random_goal_changing:
-            if self.global_time % 5 == 0:
+            if self.global_time % 5 == 0: # every 5 seconds
                 self.update_human_goals_randomly()
 
 
@@ -871,7 +920,7 @@ class CrowdSim(gym.Env):
 
 
 
-        plt.pause(0.1)
+        plt.pause(5.0)
         for item in artists:
             item.remove() # there should be a better way to do this. For example,
             # initially use add_artist and draw_artist later on

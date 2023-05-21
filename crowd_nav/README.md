@@ -4,8 +4,8 @@ Configuration for:
 1. training `training`:
     - `device`: cpu or gpu (cuda)
 2. gym environment `env`:
-    - `time_limit`: termination state of one episode
-    - `time_step`: number of seconds between frames
+    - `time_limit`: termination state of one episode (default: 50 seconds)
+    - `time_step`: number of seconds between frames (default: 0.25s)
     - `val_size`: validation
     - `test_size`: testing
     - `randomize_attributes`: randomize human behaviors
@@ -62,7 +62,7 @@ Configuration for:
    - `sensor`:
       - `'coordinate'`: 
    - `FOV`: this values * PI
-   - `sensor_range`: radius of perception range
+   - `sensor_range`: radius of perception range (m)
 8. action space of robot `action_space`:
    - `kinematics`:
      - `'holonomic'`: vx, vy

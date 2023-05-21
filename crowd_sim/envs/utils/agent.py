@@ -177,7 +177,7 @@ class Agent(object):
         if self.kinematics == 'holonomic':
             self.vx = action.vx
             self.vy = action.vy
-        else:
+        else: # unicycle
             self.theta = (self.theta + action.r) % (2 * np.pi)
             self.vx = action.v * np.cos(self.theta)
             self.vy = action.v * np.sin(self.theta)

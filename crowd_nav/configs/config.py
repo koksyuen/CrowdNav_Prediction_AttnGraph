@@ -15,7 +15,7 @@ class Config(object):
 
     # general configs for OpenAI gym env
     env = BaseConfig()
-    env.time_limit = 50
+    env.time_limit = 50 # unit: second
     env.time_step = 0.25 # second per frame
     env.val_size = 100
     env.test_size = 500
@@ -98,7 +98,8 @@ class Config(object):
     # whether robot is visible to humans (whether humans respond to the robot's motion)
     robot.visible = False
     # For baseline: srnn; our method: selfAttn_merge_srnn
-    robot.policy = 'selfAttn_merge_srnn'
+    # robot.policy = 'selfAttn_merge_srnn'
+    robot.policy = 'srnn'
     robot.radius = 0.3
     robot.v_pref = 1
     robot.sensor = "coordinates"
