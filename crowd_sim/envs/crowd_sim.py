@@ -241,6 +241,7 @@ class CrowdSim(gym.Env):
             for i, agent in enumerate([self.robot] + self.humans):
                 # keep human at least 3 meters away from robot
                 if self.robot.kinematics == 'unicycle' and i == 0:
+                    # Todo: if circle_radius <= 4, unicycle robot will get stuck???
                     min_dist = self.circle_radius / 2 # Todo: if circle_radius <= 4, it will get stuck here
                 else:
                     min_dist = human.radius + agent.radius + self.discomfort_dist

@@ -21,7 +21,7 @@ Configuration for:
     - `gamma`:
 4. simulation `sim`:
     - `circle_radius`: radius of circle crossing
-    - `arena_size`: 
+    - `arena_size`: n*n
     - `human_num`: number of pedestrians
     - `human_num_range`: 
     - `predict_steps`: 
