@@ -226,7 +226,7 @@ class CrowdSim(gym.Env):
         """Generate a human: generate start position on a circle, goal position is at the opposite side"""
         human = Human(self.config, 'humans')
         if self.randomize_attributes:
-            human.sample_random_attributes() # random v_pref (v_max) and radius of human
+            human.sample_random_attributes() # random v_pref (v_max), radius of human & emotion
 
         while True:
             angle = np.random.random() * np.pi * 2
@@ -323,8 +323,7 @@ class CrowdSim(gym.Env):
             py = self.circle_radius * np.sin(angle)
             while True:
                 gx, gy = np.random.uniform(-self.circle_radius, self.circle_radius, 2)
-                # 6units == 1 meter?
-                if np.linalg.norm([px - gx, py - gy]) >= 6:  # 1 was 6
+                if np.linalg.norm([px - gx, py - gy]) >= 6:  # at least 6 meters away
                     break
             # def set(self, px, py, gx, gy, vx, vy, theta, radius=None, v_pref=None)
             self.robot.set(px, py, gx, gy, 0, 0, np.random.uniform(0, 2*np.pi)) # randomize initial orientation (theta)

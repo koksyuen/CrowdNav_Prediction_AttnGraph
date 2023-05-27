@@ -35,6 +35,9 @@ class Agent(object):
         self.time_step = config.env.time_step
         self.policy.time_step = config.env.time_step
 
+        self.emotions = config.sgan.emotions # database of emotion category
+        self.emotion = None
+
 
     def print_info(self):
         logging.info('Agent is {} and has {} kinematic constraint'.format(
@@ -48,6 +51,7 @@ class Agent(object):
         """
         self.v_pref = np.random.uniform(0.5, 1.5)
         self.radius = np.random.uniform(0.3, 0.5)
+        self.emotion = np.random.choice(list(self.emotions.keys()))
 
     def set(self, px, py, gx, gy, vx, vy, theta, radius=None, v_pref=None):
         self.px = px
@@ -153,7 +157,7 @@ class Agent(object):
             # px = self.px + np.cos(theta) * action.v * delta_t
             # py = self.py + np.sin(theta) * action.v * delta_t
 
-            # differential drive
+            # differential drive 圆弧模型
             epsilon = 0.0001
             if abs(action.r) < epsilon:
                 R = 0
@@ -178,7 +182,7 @@ class Agent(object):
             self.vx = action.vx
             self.vy = action.vy
         else: # unicycle
-            self.theta = (self.theta + action.r) % (2 * np.pi)
+            self.theta = (self.theta + action.r/self.time_step) % (2 * np.pi)
             self.vx = action.v * np.cos(self.theta)
             self.vy = action.v * np.sin(self.theta)
 

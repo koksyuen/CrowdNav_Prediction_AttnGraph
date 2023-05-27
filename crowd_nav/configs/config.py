@@ -101,7 +101,7 @@ class Config(object):
     # robot.policy = 'selfAttn_merge_srnn'
     robot.policy = 'srnn'
     robot.radius = 0.3
-    robot.v_pref = 1
+    robot.v_pref = 1 # unit: m/s
     robot.sensor = "coordinates"
     # FOV = this values * PI
     robot.FOV = 2
@@ -149,6 +149,16 @@ class Config(object):
     lidar.angular_res = 5
     # range in meters
     lidar.range = 10
+
+    # config for SocialGAN
+    sgan = BaseConfig()
+    sgan.obs_len = 8
+    sgan.pred_len = 8
+    sgan.map_resolution = 0.1 # meter per unit
+    sgan.model_path = '/home/koksyuen/python_project/sgan/models/sgan-p-models/eth_8_model.pt'
+    sgan.emotions = {'happy': 0.5,
+                    'normal': 0.75,
+                    'angry': 0.9}
 
     # config for sim2real
     sim2real = BaseConfig()
