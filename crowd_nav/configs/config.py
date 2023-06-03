@@ -107,6 +107,9 @@ class Config(object):
     robot.FOV = 2
     # radius of perception range
     robot.sensor_range = 5
+    # For unicycle action
+    robot.vx_max = 0.1 # unit: m/s
+    robot.dtheta_max = 0.07 # unit: rad/s
 
     # action space of the robot
     action_space = BaseConfig()
@@ -154,7 +157,7 @@ class Config(object):
     sgan = BaseConfig()
     sgan.obs_len = 8
     sgan.pred_len = 8
-    sgan.map_resolution = 0.1 # meter per unit
+    sgan.map_resolution = 0.3 # meter per unit
     sgan.model_path = '/home/koksyuen/python_project/sgan/models/sgan-p-models/eth_8_model.pt'
     sgan.emotions = {'happy': 0.5,
                     'normal': 0.75,

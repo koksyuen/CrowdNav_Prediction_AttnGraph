@@ -58,24 +58,16 @@ class CrowdSimSgan(CrowdSim):
         self.map_resolution = config.sgan.map_resolution
         self.local_map_size = int(2 * (self.robot.sensor_range + 1) / config.sgan.map_resolution)
 
-        # robot_state: px, py, gx, gy, radius
-        self.observation_space = Dict({"robot_state": Box(low=self.circle_radius,
-                                                          high=self.circle_radius,
-                                                          shape=(5,),
-                                                          dtype=np.float32),
+        # For unicycle action
+        self.robot.vx_max = config.robot.vx_max
+        self.robot.dtheta_max = config.robot.dtheta_max
+
+        self.observation_space = Dict({"local_goal": Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32),
                                        "local_map": Box(low=0, high=255,
                                                         shape=(self.local_map_size, self.local_map_size),
                                                         dtype=np.uint8)})
 
-        if self.robot.kinematics == 'holonomic':
-            # action: vx, vy
-            self.action_space = Box(low=-self.robot.v_pref, high=self.robot.v_pref, shape=(2,), dtype=np.float32)
-        else:   #unicycle
-            # action: vx(-0.1 ~ 0.1 m/s), dtheta (-0.07 ~ 0.07 rad/s)
-            self.action_space = Box(low=np.array([-0.1, -0.07]),
-                                    high=np.array([0.1, 0.07]), dtype=np.float32)
-
-
+        self.action_space = Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
     def set_robot(self, robot):
         self.robot = robot
@@ -230,15 +222,14 @@ class CrowdSimSgan(CrowdSim):
 
         return reward, done, episode_info
 
-    """
-    Compute the observation
-    :return: a 1D numpy array that consists of:
-        - number of visible humans
-        - parameter of robot: px, py, vx, vy, radius, gx, gy, v_pref, theta
-        - database of humans' states (includes visible & non-visible humans): px, py, vx, vy, radius  
-    """
 
     def generate_ob(self, reset):
+        """
+        Compute the observation
+        :return: a dictionary
+            - local_goal: goal coordinate in robot (local) frame
+            - local_map: costmap in robot (local) frame
+        """
 
         # human's state
         visible_human_states, num_visible_humans, human_visibility = self.get_num_human_in_fov()
@@ -249,6 +240,7 @@ class CrowdSimSgan(CrowdSim):
 
         self.update_visible_human_states_record(human_visibility, reset=reset)
 
+        ''' Generate local map (includes trajectory prediction) '''
         if num_visible_humans > 0:  # implement socialGAN only if detected human(s)
             self.update_visible_last_human_emotion(human_visibility)
             # SocialGAN: pedestrians' trajectory prediction in global frame
@@ -262,13 +254,63 @@ class CrowdSimSgan(CrowdSim):
         else:
             local_map = np.zeros((self.local_map_size, self.local_map_size), dtype=np.uint8)
 
+        ### Calculates goal coordinate in local frame
+        gx, gy = self.calculate_local_goal()
+
+        ### Normalise observation (doesn't include local map)
+        nor_gx, nor_gy = self.normalize_goal(gx, gy)
+
         # record for next step
         self.previous_human_visibility = np.array(human_visibility)
 
-        ob = {'robot_state': np.array([self.robot.px, self.robot.py, self.robot.gx, self.robot.gy, self.robot.radius]),
+        ob = {'local_goal': np.array([nor_gx, nor_gy], dtype=np.float32),
               'local_map': local_map
               }
         return ob
+
+    def normalize_goal(self, gx, gy):
+        """
+        normalize goal coordinates to (-1.0 ~ 1.0)
+        :return: normalized x and y coordinate of goal
+        """
+        # normalized_value = original_value / original_max_value
+        # since goal is symmetrical (-max ~ max)
+        nor_gx = gx / (2 * self.circle_radius)
+        nor_gy = gy / (2 * self.circle_radius)
+
+        return nor_gx, nor_gy
+
+
+    def calculate_local_goal(self):
+        """
+        calculate robot's goal in robot (local) frame
+        :return: x and y coordinate of robot's goal in robot (local) frame
+        """
+        dx = self.robot.px
+        dy = self.robot.py
+
+        if self.robot.kinematics == 'holonomic':
+            # T ^ w _ r
+            T_w_r = np.array([[1.0, 0.0, dx],
+                              [0.0, 1.0, dy],
+                              [0, 0, 1]])  # 2D transformation matrix
+        else:  # unicyle
+            theta = self.robot.theta
+            # T ^ w _ r
+            T_w_r = np.array([[np.cos(theta), - np.sin(theta), dx],
+                              [np.sin(theta), np.cos(theta), dy],
+                              [0, 0, 1]])  # 2D transformation matrix
+
+        # T ^ r _ w
+        T_r_w = np.linalg.inv(T_w_r)
+
+        # goal in global frame
+        global_goal = np.array([self.robot.gx, self.robot.gy])
+        # goal in robot (local) frame
+        local_goal = np.dot(T_r_w, np.hstack((global_goal, 1)))
+
+        return local_goal[0], local_goal[1]
+
 
     def generate_costmap(self, trajectories):
         """
@@ -386,19 +428,36 @@ class CrowdSimSgan(CrowdSim):
     def update_visible_last_human_emotion(self, human_visibility):
         self.visible_humans_emotion = np.array(self.humans_emotion)[np.array(human_visibility)]
 
+
+    def rescale_action(self, normalized_action):
+        """
+        rescale the normalized action to usable action
+        normalized_action: action that range from -1.0 to 1.0
+        :return: usable_action that range from -max to max
+        """
+        if self.robot.kinematics == 'holonomic':
+            vx = normalized_action.vx * self.robot.v_pref
+            vy = normalized_action.vy * self.robot.v_pref
+            return ActionXY(vx, vy)
+        else:   # unicycle
+            vx = normalized_action.v * self.robot.vx_max
+            dtheta = normalized_action.r * self.robot.dtheta_max
+            return ActionRot(vx, dtheta)
+
+
     def step(self, raw_action, update=True):
         """
         Compute actions for all agents, detect collision, update environment and return (ob, reward, done, info)
         """
 
-        # # clip the action to obey robot's constraint
-        # action = self.robot.policy.clip_action(action, self.robot.v_pref)
-
         # different action format
+        # rescale action
         if self.robot.kinematics == 'holonomic':
-            action = ActionXY(raw_action[0], raw_action[1])   # vx, vy
+            normalized_action = ActionXY(raw_action[0], raw_action[1])   # vx, vy
+            action = self.rescale_action(normalized_action)
         else:   # unicycle
-            action = ActionRot(raw_action[0], raw_action[1])   # vx, dtheta
+            normalized_action = ActionRot(raw_action[0], raw_action[1])   # v, r
+            action = self.rescale_action(normalized_action)
 
         # humans perform action first
         human_actions = self.get_human_actions()
