@@ -64,7 +64,7 @@ class CrowdSimSgan(CrowdSim):
 
         self.observation_space = Dict({"local_goal": Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32),
                                        "local_map": Box(low=0, high=255,
-                                                        shape=(self.local_map_size, self.local_map_size),
+                                                        shape=(self.local_map_size, self.local_map_size, 1),
                                                         dtype=np.uint8)})
 
         self.action_space = Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
@@ -252,7 +252,13 @@ class CrowdSimSgan(CrowdSim):
             # end_time = time.time()
             # print('map construction time: {}s'.format(end_time-start_time))
         else:
-            local_map = np.zeros((self.local_map_size, self.local_map_size), dtype=np.uint8)
+            local_map = np.zeros((self.local_map_size, self.local_map_size, 1), dtype=np.uint8)
+
+        ### Calculates goal coordinate in local frame
+        gx, gy = self.calculate_local_goal()
+
+        ### Normalise observation (doesn't include local map)
+        nor_gx, nor_gy = self.normalize_goal(gx, gy)
 
         ### Calculates goal coordinate in local frame
         gx, gy = self.calculate_local_goal()
@@ -345,7 +351,7 @@ class CrowdSimSgan(CrowdSim):
                 if local_map[x, y] < map_value:
                     local_map[x, y] = map_value
 
-        return local_map
+        return local_map.reshape(local_map.shape[0], local_map.shape[1], 1)
 
     def global_to_local(self, traj_global):
         """
