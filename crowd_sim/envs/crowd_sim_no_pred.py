@@ -18,13 +18,10 @@ from crowd_sim.envs.utils.action import ActionRot, ActionXY
 
 import sys
 
-sys.path.append('/home/koksyuen/python_project/sgan')
-from predictor import socialGAN
 
-
-class CrowdSimSgan(CrowdSim):
+class CrowdSimNoPred(CrowdSim):
     """
-        Added Social GAN for pedestrians' trajectory prediction
+        Without Social GAN for pedestrians' trajectory prediction
     """
 
     def __init__(self):
@@ -52,8 +49,6 @@ class CrowdSimSgan(CrowdSim):
         # observable state of a human = px, py (2 variables)
         self.human_states_record = np.zeros((self.obs_len, self.human_num, 2), dtype=np.float32)
         """"""
-
-        self.traj_predictor = socialGAN(model_path=config.sgan.model_path)
 
         self.map_resolution = config.sgan.map_resolution
         self.local_map_size = int(2 * (self.robot.sensor_range + 1) / config.sgan.map_resolution)
@@ -109,7 +104,7 @@ class CrowdSimSgan(CrowdSim):
                           'val': 0, 'test': self.case_capacity['val']}
 
         # print('phase: {}   counter_offset: {}   case_counter: {}   seed: {}'.format(phase, counter_offset[phase], self.case_counter[phase], self.thisSeed))
-
+        # print('seed: {}'.format(counter_offset[phase] + self.case_counter[phase] + self.thisSeed))
         np.random.seed(counter_offset[phase] + self.case_counter[phase] + self.thisSeed)
 
         # case size is used to make sure that the case_counter is always between 0 and case_size[phase]
@@ -240,19 +235,23 @@ class CrowdSimSgan(CrowdSim):
 
         self.update_visible_human_states_record(human_visibility, reset=reset)
 
-        ''' Generate local map (includes trajectory prediction) '''
-        if num_visible_humans > 0:  # implement socialGAN only if detected human(s)
+        ''' Generate local map '''
+        if num_visible_humans > 0:  # generate costmap only if detected human(s)
             self.update_visible_last_human_emotion(human_visibility)
-            # SocialGAN: pedestrians' trajectory prediction in global frame
-            self.predicted_human_states = self.traj_predictor(self.visible_human_states_record)
-            # convert predicted trajectory from global frame to local (robot) frame
-            local_predicted_human_states = self.global_to_local(self.predicted_human_states)
+            # convert trajectory from global frame to local (robot) frame
+            local_visible_human_states_record = self.global_to_local(self.visible_human_states_record)
             # start_time = time.time()
-            local_map = self.generate_costmap(local_predicted_human_states)
+            local_map = self.generate_costmap(local_visible_human_states_record)
             # end_time = time.time()
             # print('map construction time: {}s'.format(end_time-start_time))
         else:
             local_map = np.zeros((self.local_map_size, self.local_map_size, 1), dtype=np.uint8)
+
+        ### Calculates goal coordinate in local frame
+        gx, gy = self.calculate_local_goal()
+
+        ### Normalise observation (doesn't include local map)
+        nor_gx, nor_gy = self.normalize_goal(gx, gy)
 
         ### Calculates goal coordinate in local frame
         gx, gy = self.calculate_local_goal()
@@ -333,17 +332,12 @@ class CrowdSimSgan(CrowdSim):
         # change the shape of array to: (num_of_human, traj_len, 2)
         offset_trajectories_index = offset_trajectories_index.transpose(1,0,2)
 
-        # construct local map
+        # construct local map using the latest coordinate
         for human_id in range(offset_trajectories_index.shape[0]):
-            # decay rate based on the emotion of pedestrian
-            decay_rate = self.emotion_coeff[self.visible_humans_emotion[human_id]]
+            x = offset_trajectories_index[human_id, -1, 0]
+            y = offset_trajectories_index[human_id, -1, 1]
             map_value = 255
-            for seq_num in range(offset_trajectories_index.shape[1]):
-                x = offset_trajectories_index[human_id, seq_num, 0]
-                y = offset_trajectories_index[human_id, seq_num, 1]
-                map_value = int(map_value * decay_rate)
-                if local_map[x, y] < map_value:
-                    local_map[x, y] = map_value
+            local_map[x, y] = map_value
 
         return local_map.reshape(local_map.shape[0], local_map.shape[1], 1)
 
@@ -632,18 +626,18 @@ class CrowdSimSgan(CrowdSim):
                     artists.append(circle)
 
         # plot predicted human trajectory
-        sgan_i = 0
-        for i in range(len(self.humans)):
-            # Caution: this is actually current human visibility (bcuz render is called after reset or step)
-            if self.previous_human_visibility[i]:
-                # add predicted positions of each human
-                for j in range(self.pred_len):
-                    circle = plt.Circle(self.predicted_human_states[j][sgan_i], self.humans[i].radius,
-                                        fill=False, color='tab:orange', linewidth=1.0,
-                                        alpha=0.8 / (j + 1))
-                    ax.add_artist(circle)
-                    artists.append(circle)
-                sgan_i += 1
+        # sgan_i = 0
+        # for i in range(len(self.humans)):
+        #     # Caution: this is actually current human visibility (bcuz render is called after reset or step)
+        #     if self.previous_human_visibility[i]:
+        #         # add predicted positions of each human
+        #         for j in range(self.pred_len):
+        #             circle = plt.Circle(self.predicted_human_states[j][sgan_i], self.humans[i].radius,
+        #                                 fill=False, color='tab:orange', linewidth=1.0,
+        #                                 alpha=0.8 / (j + 1))
+        #             ax.add_artist(circle)
+        #             artists.append(circle)
+        #         sgan_i += 1
 
         plt.pause(0.01)
         for item in artists:

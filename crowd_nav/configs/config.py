@@ -109,12 +109,12 @@ class Config(object):
     robot.sensor_range = 5
     # For unicycle action
     robot.vx_max = 0.1 # unit: m/s
-    robot.dtheta_max = 0.07 # unit: rad/s
+    robot.dtheta_max = 0.06 # unit: rad/s
 
     # action space of the robot
     action_space = BaseConfig()
     # holonomic or unicycle
-    action_space.kinematics = "unicycle"
+    action_space.kinematics = "holonomic"
 
     # config for ORCA
     orca = BaseConfig()

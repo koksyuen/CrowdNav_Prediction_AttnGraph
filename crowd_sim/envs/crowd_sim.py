@@ -231,9 +231,9 @@ class CrowdSim(gym.Env):
         while True:
             angle = np.random.random() * np.pi * 2
             # add some noise to simulate all the possible cases robot could meet with human
-            v_pref = 1.0 if human.v_pref == 0 else human.v_pref
-            px_noise = (np.random.random() - 0.5) * v_pref
-            py_noise = (np.random.random() - 0.5) * v_pref
+            noise_range = 2
+            px_noise = np.random.uniform(-1, 1) * noise_range
+            py_noise = np.random.uniform(-1, 1) * noise_range
             px = self.circle_radius * np.cos(angle) + px_noise
             py = self.circle_radius * np.sin(angle) + py_noise
             collide = False
@@ -245,8 +245,7 @@ class CrowdSim(gym.Env):
                     min_dist = self.circle_radius / 2 # Todo: if circle_radius <= 4, it will get stuck here
                 else:
                     min_dist = human.radius + agent.radius + self.discomfort_dist
-                if norm((px - agent.px, py - agent.py)) < min_dist or \
-                        norm((px - agent.gx, py - agent.gy)) < min_dist:
+                if norm((px - agent.px, py - agent.py)) < min_dist or norm((px - agent.gx, py - agent.gy)) < min_dist:
                     collide = True
                     break
             if not collide:
@@ -480,8 +479,7 @@ class CrowdSim(gym.Env):
 
                     for agent in [self.robot] + humans_copy: # detect collision with robot & other pedestrians
                         min_dist = human.radius + agent.radius + self.discomfort_dist
-                        if norm((gx - agent.px, gy - agent.py)) < min_dist or \
-                                norm((gx - agent.gx, gy - agent.gy)) < min_dist:
+                        if norm((gx - agent.px, gy - agent.py)) < min_dist or norm((gx - agent.gx, gy - agent.gy)) < min_dist:
                             collide = True
                             break
                     if not collide: # no collision with all other agents
