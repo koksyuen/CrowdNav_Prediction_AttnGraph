@@ -45,6 +45,7 @@ class CrowdSimSgan(CrowdSim):
 
         self.obs_len = config.sgan.obs_len
         self.pred_len = config.sgan.pred_len
+        self.sgan_model = config.sgan.model_path
 
         """" Human states database (include history) for SocialGAN"""
         # queue data structure
@@ -52,8 +53,6 @@ class CrowdSimSgan(CrowdSim):
         # observable state of a human = px, py (2 variables)
         self.human_states_record = np.zeros((self.obs_len, self.human_num, 2), dtype=np.float32)
         """"""
-
-        self.traj_predictor = socialGAN(model_path=config.sgan.model_path)
 
         self.map_resolution = config.sgan.map_resolution
         self.local_map_size = int(2 * (self.robot.sensor_range + 1) / config.sgan.map_resolution)
@@ -72,10 +71,16 @@ class CrowdSimSgan(CrowdSim):
     def set_robot(self, robot):
         self.robot = robot
 
-    def setup(self, seed, num_of_env, ax=None):
+    def setup(self, seed, num_of_env, traj_predictor=None, ax=None):
         self.thisSeed = seed
         self.nenv = num_of_env
         self.render_axis = ax
+        print('received object: {}'.format(id(traj_predictor)))
+        if traj_predictor is None:
+            self.traj_predictor = socialGAN(model_path=self.sgan_model)
+        else:
+            self.traj_predictor = traj_predictor
+        print('stored object: {}'.format(id(self.traj_predictor)))
 
     def reset(self, phase='train', test_case=None):
         """
