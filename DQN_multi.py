@@ -1,3 +1,5 @@
+import torch
+
 import gym
 from gym.spaces import Discrete
 import numpy as np
@@ -16,10 +18,11 @@ from crowd_nav.configs.config import Config
 
 import sys
 sys.path.append('/home/koksyuen/python_project/sgan')
-from predictor import socialGAN
+# from predictor import socialGAN
+from predictor2 import get_generator, socialGAN
 
-traj_predictor = socialGAN(model_path='/home/koksyuen/python_project/sgan/models/sgan-p-models/eth_8_model.pt')
-print('general obj id: {}'.format(id(traj_predictor)))
+# traj_predictor = socialGAN(model_path='/home/koksyuen/python_project/sgan/models/sgan-p-models/eth_8_model.pt')
+# print('general obj id: {}'.format(id(traj_predictor)))
 
 '''
 0: Vx=0, Vy=0
@@ -69,7 +72,7 @@ class TrainAndLoggingCallback(BaseCallback):
         return True
 
 
-def make_env(seed, rank, env_config, envNum=1):
+def make_env(seed, rank, env_config, traj_predictor, envNum=1):
     """
     Utility function for multiprocessed env.
 
@@ -79,7 +82,7 @@ def make_env(seed, rank, env_config, envNum=1):
     """
 
     def _init():
-        print('first received object: {}'.format(id(traj_predictor)))
+        # print('first received object: {}'.format(id(traj_predictor)))
         # env = CrowdSimNoPred()
         env = CrowdSimSgan()
         # use a seed for reproducibility
@@ -97,16 +100,20 @@ def make_env(seed, rank, env_config, envNum=1):
 def main():
     config = Config()
 
-    num_cpu = 6  # Number of processes/threads to use
+    num_cpu = 1  # Number of processes/threads to use
     seed = 0
 
     CHECKPOINT_DIR = './train/DQN_SGAN/'
     LOG_DIR = './logs/SGAN/'
 
+    checkpoint = torch.load('/home/koksyuen/python_project/sgan/models/sgan-p-models/eth_8_model.pt')
+    generator = get_generator(checkpoint)
+    print('general generator id: {}'.format(id(generator)))
 
+    traj_predictor = socialGAN(generator)
 
-    multi_env = [make_env(seed, i, config, num_cpu) for i in range(num_cpu)]
-    envs = SubprocVecEnv(multi_env)
+    # multi_env = [make_env(seed, i, config, traj_predictor, num_cpu) for i in range(num_cpu)]
+    envs = SubprocVecEnv([make_env(seed, i, config, traj_predictor, num_cpu) for i in range(num_cpu)])
 
     callback = TrainAndLoggingCallback(check_freq=100000, save_path=CHECKPOINT_DIR)
 

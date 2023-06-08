@@ -75,12 +75,13 @@ class CrowdSimSgan(CrowdSim):
         self.thisSeed = seed
         self.nenv = num_of_env
         self.render_axis = ax
-        print('received object: {}'.format(id(traj_predictor)))
+
+        # print('received object: {}'.format(id(traj_predictor)))
         if traj_predictor is None:
             self.traj_predictor = socialGAN(model_path=self.sgan_model)
         else:
             self.traj_predictor = traj_predictor
-        print('stored object: {}'.format(id(self.traj_predictor)))
+        # print('stored object: {}'.format(id(self.traj_predictor)))
 
     def reset(self, phase='train', test_case=None):
         """
