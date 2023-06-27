@@ -12,9 +12,11 @@ from crowd_sim.envs import *
 from crowd_sim.envs.utils.human import Human
 from crowd_sim.envs.utils.robot import Robot
 from crowd_sim.envs.utils.info import *
-from crowd_nav.policy.orca import ORCA
 from crowd_sim.envs.utils.state import *
 from crowd_sim.envs.utils.action import ActionRot, ActionXY
+from crowd_sim.envs.utils.artificial_potential_field import ArtificialPotentialField
+from crowd_nav.policy.orca import ORCA
+from crowd_sim.envs.utils.state import JointState
 
 import sys
 
@@ -22,7 +24,7 @@ sys.path.append('/home/koksyuen/python_project/sgan')
 from predictor import socialGAN
 
 
-class CrowdSimSgan(CrowdSim):
+class CrowdSimSganApf(CrowdSim):
     """
         Added Social GAN for pedestrians' trajectory prediction
     """
@@ -41,7 +43,8 @@ class CrowdSimSgan(CrowdSim):
 
         super().configure(config)
 
-        self.emotion_coeff = config.sgan.emotions  # database of emotion category
+        # database of comfort distance boundary based on facial expression (emotion)
+        self.emotion_comfort_distance = config.sgan.emotions
 
         self.obs_len = config.sgan.obs_len
         self.pred_len = config.sgan.pred_len
@@ -55,18 +58,26 @@ class CrowdSimSgan(CrowdSim):
         """"""
 
         self.map_resolution = config.sgan.map_resolution
-        self.local_map_size = int(2 * (self.robot.sensor_range + 1) / config.sgan.map_resolution)
+        map_padding = 1   # meter
+        self.local_map_size = 2*(self.robot.sensor_range + map_padding)
+
+        # artificial potential field (APF)
+        self.APF = ArtificialPotentialField(map_size=self.local_map_size,
+                                            reso=self.map_resolution,
+                                            comfort_dist_database=self.emotion_comfort_distance)
 
         # For unicycle action
         self.robot.vx_max = config.robot.vx_max
         self.robot.dtheta_max = config.robot.dtheta_max
 
-        self.observation_space = Dict({"local_goal": Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32),
-                                       "local_map": Box(low=0, high=255,
-                                                        shape=(self.local_map_size, self.local_map_size, 1),
-                                                        dtype=np.uint8)})
-
+        width = int(round((self.local_map_size / self.map_resolution)))
+        self.observation_space = Box(low=0, high=255,
+                                     shape=(width, width, 1),
+                                     dtype=np.uint8)
         self.action_space = Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+
+        self.robot_orca = ORCA(config)
+        self.robot_orca.time_step = config.env.time_step
 
     def set_robot(self, robot):
         self.robot = robot
@@ -129,6 +140,7 @@ class CrowdSimSgan(CrowdSim):
 
         self.humans = []  # remove all humans at the beginning of an episode
         self.humans_emotion = []
+        self.humans_radius = []
         self.global_time = 0
         self.step_counter = 0
 
@@ -143,6 +155,8 @@ class CrowdSimSgan(CrowdSim):
 
         # record humans' emotion
         self.record_humans_emotion()
+        # record humans' radius
+        self.record_humans_radius()
 
         # get first observation
         ob = self.generate_ob(reset=True)
@@ -232,9 +246,7 @@ class CrowdSimSgan(CrowdSim):
     def generate_ob(self, reset):
         """
         Compute the observation
-        :return: a dictionary
-            - local_goal: goal coordinate in robot (local) frame
-            - local_map: costmap in robot (local) frame
+        :return: local_map: costmap in robot (local) frame
         """
 
         # human's state
@@ -246,45 +258,57 @@ class CrowdSimSgan(CrowdSim):
 
         self.update_visible_human_states_record(human_visibility, reset=reset)
 
-        ''' Generate local map (includes trajectory prediction) '''
-        if num_visible_humans > 0:  # implement socialGAN only if detected human(s)
-            self.update_visible_last_human_emotion(human_visibility)
-            # SocialGAN: pedestrians' trajectory prediction in global frame
-            self.predicted_human_states = self.traj_predictor(self.visible_human_states_record)
-            # convert predicted trajectory from global frame to local (robot) frame
-            local_predicted_human_states = self.global_to_local(self.predicted_human_states)
-            # start_time = time.time()
-            local_map = self.generate_costmap(local_predicted_human_states)
-            # end_time = time.time()
-            # print('map construction time: {}s'.format(end_time-start_time))
-        else:
-            local_map = np.zeros((self.local_map_size, self.local_map_size, 1), dtype=np.uint8)
-
         ### Calculates goal coordinate in local frame
         gx, gy = self.calculate_local_goal()
 
-        ### Normalise observation (doesn't include local map)
-        nor_gx, nor_gy = self.normalize_goal(gx, gy)
+        ''' Generate local map (includes trajectory prediction) '''
+        if num_visible_humans > 0:  # implement socialGAN only if detected human(s)
+            visible_humans_emotion = np.array(self.humans_emotion)[np.array(human_visibility)]
+            visible_humans_radius = np.array(self.humans_radius)[np.array(human_visibility)]
+
+            # SocialGAN: pedestrians' trajectory prediction in global frame
+            # start_time = time.time()
+            self.predicted_human_states = self.traj_predictor(self.visible_human_states_record)
+            # end_time = time.time()
+            # print("trajectory prediction time: {}s".format(end_time-start_time))
+
+            # convert predicted trajectory from global frame to local (robot) frame
+            local_predicted_human_states = self.global_to_local(self.predicted_human_states)
+
+            # start_time = time.time()
+            pmap = self.APF.calc_potential_field(gx, gy,
+                                        humans_emotion=visible_humans_emotion,
+                                        pred_humans_traj=local_predicted_human_states,
+                                        rr=self.robot.radius,
+                                        hr=visible_humans_radius,
+                                        detected_human=True)
+            # end_time = time.time()
+            # print("map generation time: {}s".format(end_time-start_time))
+        else:
+            # start_time = time.time()
+            pmap = self.APF.calc_potential_field(gx, gy,
+                                        humans_emotion=None,
+                                        pred_humans_traj=None,
+                                        rr=None,
+                                        hr=None,
+                                        detected_human=False)
+            # end_time = time.time()
+            # print("no human map generation time: {}s".format(end_time-start_time))
 
         # record for next step
         self.previous_human_visibility = np.array(human_visibility)
 
-        ob = {'local_goal': np.array([nor_gx, nor_gy], dtype=np.float32),
-              'local_map': local_map
-              }
-        return ob
+        return pmap
 
-    def normalize_goal(self, gx, gy):
+    def calculate_orca(self):
         """
-        normalize goal coordinates to (-1.0 ~ 1.0)
-        :return: normalized x and y coordinate of goal
+        calculate action of robot based on ORCA (for Imitation Learning)
+        :return: holonomic action (vx, vy)
         """
-        # normalized_value = original_value / original_max_value
-        # since goal is symmetrical (-max ~ max)
-        nor_gx = gx / (4 * self.circle_radius)
-        nor_gy = gy / (4 * self.circle_radius)
-
-        return nor_gx, nor_gy
+        ob = self.last_human_states_obj()
+        state = JointState(self.robot.get_full_state(), ob)
+        action = self.robot_orca.predict(state)
+        return action.vx, action.vy
 
 
     def calculate_local_goal(self):
@@ -317,41 +341,6 @@ class CrowdSimSgan(CrowdSim):
 
         return local_goal[0], local_goal[1]
 
-
-    def generate_costmap(self, trajectories):
-        """
-        construct costmap based on the trajectories
-        trajectories: array of humans' trajectories (traj_len, num_of_human, 2)
-        :return: costmap (n-by-n uint8 numpy array)
-        """
-        local_map = np.zeros((self.local_map_size, self.local_map_size), dtype=np.uint8)
-
-        # transform coordinates (x,y) [unit: meter] of the trajectories to indexes (i,j) of the local map
-        trajectories_index = (1/self.map_resolution) * trajectories
-
-        # offset the indexes (i,j) of the local map, so that center of local map is located at center point
-        offset = int(self.local_map_size / 2)
-        offset_trajectories_index = offset - np.ceil(trajectories_index).astype(int)
-
-        # clip indexes (i,j) outside of local map
-        offset_trajectories_index = np.clip(offset_trajectories_index, 0, self.local_map_size - 1)
-
-        # change the shape of array to: (num_of_human, traj_len, 2)
-        offset_trajectories_index = offset_trajectories_index.transpose(1,0,2)
-
-        # construct local map
-        for human_id in range(offset_trajectories_index.shape[0]):
-            # decay rate based on the emotion of pedestrian
-            decay_rate = self.emotion_coeff[self.visible_humans_emotion[human_id]]
-            map_value = 255
-            for seq_num in range(offset_trajectories_index.shape[1]):
-                x = offset_trajectories_index[human_id, seq_num, 0]
-                y = offset_trajectories_index[human_id, seq_num, 1]
-                map_value = int(map_value * decay_rate)
-                if local_map[x, y] < map_value:
-                    local_map[x, y] = map_value
-
-        return local_map.reshape(local_map.shape[0], local_map.shape[1], 1)
 
     def global_to_local(self, traj_global):
         """
@@ -430,9 +419,9 @@ class CrowdSimSgan(CrowdSim):
         for i in range(self.human_num):
             self.humans_emotion.append(self.humans[i].emotion)
 
-
-    def update_visible_last_human_emotion(self, human_visibility):
-        self.visible_humans_emotion = np.array(self.humans_emotion)[np.array(human_visibility)]
+    def record_humans_radius(self):
+        for i in range(self.human_num):
+            self.humans_radius.append(self.humans[i].radius)
 
 
     def rescale_action(self, normalized_action):
