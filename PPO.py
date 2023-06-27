@@ -54,8 +54,8 @@ def main():
     # callback = TrainAndLoggingCallback(check_freq=100000, save_path=CHECKPOINT_DIR, start_step=4000000)
     # model = PPO.load(MODEL_PATH, env, tensorboard_log=LOG_DIR)
 
-    # model.learn(total_timesteps=int(1e7), callback=callback)
-    # model.save('latestmodel')
+    model.learn(total_timesteps=int(1e7), callback=callback)
+    model.save('latestmodel')
 
 
 if __name__ == '__main__':
