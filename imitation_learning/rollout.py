@@ -24,6 +24,34 @@ from stable_baselines3.common.vec_env import VecEnv
 
 from imitation.data import types
 
+
+def unwrap_traj(traj: types.TrajectoryWithRew) -> types.TrajectoryWithRew:
+    """Uses `RolloutInfoWrapper`-captured `obs` and `rews` to replace fields.
+
+    This can be useful for bypassing other wrappers to retrieve the original
+    `obs` and `rews`.
+
+    Fails if `infos` is None or if the trajectory was generated from an
+    environment without imitation.data.wrappers.RolloutInfoWrapper
+
+    Args:
+        traj: A trajectory generated from `RolloutInfoWrapper`-wrapped Environments.
+
+    Returns:
+        A copy of `traj` with replaced `obs` and `rews` fields.
+
+    Raises:
+        ValueError: If `traj.infos` is None
+    """
+    if traj.infos is None:
+        raise ValueError("Trajectory must have infos to unwrap")
+    ep_info = traj.infos[-1]["rollout"]
+    res = dataclasses.replace(traj, obs=ep_info["obs"], rews=ep_info["rews"])
+    assert len(res.obs) == len(res.acts) + 1
+    assert len(res.rews) == len(res.acts)
+    return res
+
+
 class TrajectoryAccumulator:
     """Accumulates trajectories step-by-step.
 
@@ -367,7 +395,6 @@ def generate_trajectories(
         may be collected to avoid biasing process towards short episodes; the user
         should truncate if required.
     """
-    get_actions = policy_to_callable(policy, venv, deterministic_policy)
 
     # Collect rollout tuples.
     trajectories = []
@@ -394,7 +421,8 @@ def generate_trajectories(
     state = None
     dones = np.zeros(venv.num_envs, dtype=bool)
     while np.any(active):
-        acts, state = get_actions(obs, state, dones)
+        actions = venv.env_method("calculate_orca")
+        acts = np.stack(actions, axis=0)
         obs, rews, dones, infos = venv.step(acts)
         assert isinstance(obs, np.ndarray)
 
@@ -644,7 +672,8 @@ def rollout(
         trajs = [dataclasses.replace(traj, infos=None) for traj in trajs]
     if verbose:
         stats = rollout_stats(trajs)
-        logging.info(f"Rollout stats: {stats}")
+        print('Rollout stats: {}'.format(stats))
+        # logging.info(f"Rollout stats: {stats}")
     return trajs
 
 

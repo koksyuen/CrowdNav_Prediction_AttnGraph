@@ -1,4 +1,4 @@
-from imitation_learning.data_collector import TrajectoryAccumulator
+from imitation_learning.rollout import TrajectoryAccumulator
 
 def main():
     pass

@@ -46,12 +46,12 @@ class ArtificialPotentialField():
         """
 
         # check if the goal is within local map
-        threshold = self.map_size / 2
-        if gx > threshold or gx < -threshold or gy > threshold or gy < -threshold:
-            # calculate direction to the goal
-            angle = np.arctan2(gy, gx)
-            gx = np.clip(gx, -threshold, threshold) * np.cos(angle)
-            gy = np.clip(gy, -threshold, threshold) * np.sin(angle)
+        # threshold = self.map_size / 2
+        # if gx > threshold or gx < -threshold or gy > threshold or gy < -threshold:
+        #     # calculate direction to the goal
+        #     angle = np.arctan2(gy, gx)
+        #     gx = np.clip(gx, -threshold, threshold) * np.cos(angle)
+        #     gy = np.clip(gy, -threshold, threshold) * np.sin(angle)
 
         # center of map
         center = self.map_size / 2
@@ -61,7 +61,6 @@ class ArtificialPotentialField():
         # Generate empty map
         # 0: x-axis    1: y-axis
         pmap_y, pmap_x = np.meshgrid(np.linspace(center, -center, width), np.linspace(center, -center, width))
-        pmap = np.stack([pmap_x, pmap_y], axis=-1)
 
         if detected_human:
 
@@ -74,15 +73,12 @@ class ArtificialPotentialField():
             decay = np.array(DECAY)
 
             """ goal attractive force """
-            ug = 0.5 * KP * np.hypot(pmap[:, :, 0] - gx, pmap[:, :, 1] - gy)
+            ug = 0.5 * KP * np.hypot(pmap_x - gx, pmap_y - gy)
 
             """ obstacle repulsive force """
-            # reshape to (pmap.shape[0], pmap.shape[1], 1, 1)
-            pmap_x = pmap[:, :, 0].reshape(pmap.shape[0], pmap.shape[1], 1, 1)
-            pmap_y = pmap[:, :, 1].reshape(pmap.shape[0], pmap.shape[1], 1, 1)
-
             # dq shape = (pmap.shape[0], pmap.shape[1], traj_len, num_of_human)
-            dq = np.hypot(pmap_x - pred_humans_traj[:, :, 0], pmap_y - pred_humans_traj[:, :, 1])
+            dq = np.hypot(pmap_x.reshape(pmap_x.shape[0], pmap_x.shape[1], 1, 1) - pred_humans_traj[:, :, 0],
+                          pmap_y.reshape(pmap_y.shape[0], pmap_y.shape[1], 1, 1) - pred_humans_traj[:, :, 1])
 
             dq[dq <= 0.1] = 0.1
 
@@ -106,7 +102,7 @@ class ArtificialPotentialField():
 
         else:
             # only calculate goal attractive force
-            pmap = 0.5 * KP * np.hypot(pmap[:, :, 0] - gx, pmap[:, :, 1] - gy)
+            pmap = 0.5 * KP * np.hypot(pmap_x - gx, pmap_y - gy)
 
         pmap_norm = (pmap-np.min(pmap))/(np.max(pmap)-np.min(pmap)) * np.iinfo(np.uint8).max
         pmap_norm = np.round(pmap_norm).astype(np.uint8)
