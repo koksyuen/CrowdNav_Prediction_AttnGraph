@@ -72,7 +72,7 @@ class CrowdSimRaw(CrowdSim):
 
         # width = int(round((self.local_map_size / self.map_resolution)))
         self.observation_space = Box(low=-10 * self.circle_radius, high=10 * self.circle_radius,
-                                     shape=(self.obs_len, self.human_num+2, 2),
+                                     shape=(self.obs_len + 2, self.human_num, 2),
                                      dtype=np.float32)
         self.action_space = Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
