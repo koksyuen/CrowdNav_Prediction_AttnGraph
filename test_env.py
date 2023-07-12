@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3 import DQN, PPO
+from stable_baselines3 import DQN, PPO, A2C
 
 from arguments import get_args
 from crowd_nav.configs.config import Config
@@ -84,8 +84,8 @@ def main():
 
     # env = DiscreteActions(env, discrete_actions)
 
-    # MODEL_PATH = './train/PPO_APF/best_model_6000000'
-    # model = PPO.load(MODEL_PATH, env)
+    MODEL_PATH = './train/GAIL_remote/model6'
+    model = PPO.load(MODEL_PATH, env)
 
     episodes = 5
     for episode in range(1, episodes + 1):
@@ -99,14 +99,14 @@ def main():
             plt.figure(1)
             env.render()
             # action = env.action_space.sample()
-            vx, vy = env.calculate_orca()
-            action = np.array([vx, vy])
-            # action_rl = model.predict(obs)
+            # vx, vy = env.calculate_orca()
+            # action = np.array([vx, vy])
+            action_rl = model.predict(obs)
             # print("action_shape".format(action_rl.shape))
             # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
             start_time = time.time()
-            # obs, reward, done, info = env.step(action_rl[0])
-            obs, reward, done, info = env.step(action)
+            obs, reward, done, info = env.step(action_rl[0])
+            # obs, reward, done, info = env.step(action)
             end_time = time.time()
             plt.figure(2)
             plt.imshow(np.rot90(obs.reshape(obs.shape[0], obs.shape[1]), -1), cmap='gray')

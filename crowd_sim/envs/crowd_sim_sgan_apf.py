@@ -72,7 +72,7 @@ class CrowdSimSganApf(CrowdSim):
 
         width = int(round((self.local_map_size / self.map_resolution)))
         self.observation_space = Box(low=0, high=255,
-                                     shape=(width, width, 1),
+                                     shape=(1, width, width),
                                      dtype=np.uint8)
         self.action_space = Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
@@ -240,7 +240,7 @@ class CrowdSimSganApf(CrowdSim):
 
             reward = reward + r_spin + r_back
 
-        return reward, done, episode_info
+        return float(reward), done, episode_info
 
 
     def generate_ob(self, reset):

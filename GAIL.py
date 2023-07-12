@@ -43,30 +43,37 @@ def main():
     config = Config()
 
     num_cpu = 1  # Number of processes to use
-    seed = 0
+    seed = 100
 
     venv = SubprocVecEnv([make_env(seed, i, config, num_cpu) for i in range(num_cpu)])
     venv = VecTransposeImage(venv)
 
     rng = np.random.default_rng()
-
+    print("collecting dataset")
     rollouts = rollout.rollout(
         policy=None,
         venv=venv,
-        sample_until=rollout.make_sample_until(min_timesteps=None, min_episodes=100),
+        sample_until=rollout.make_sample_until(min_timesteps=None, min_episodes=200),
         rng=rng,
         unwrap=False,
         exclude_infos=True,
         verbose=True
     )
 
-    learner = PPO(
+    # learner = PPO(
+    #     env=venv,
+    #     policy='CnnPolicy',
+    #     batch_size=64,
+    #     ent_coef=0.0,
+    #     learning_rate=0.0003,
+    #     n_epochs=10,
+    # )
+
+    learner = A2C(
         env=venv,
         policy='CnnPolicy',
-        batch_size=64,
         ent_coef=0.0,
-        learning_rate=0.0003,
-        n_epochs=10,
+        learning_rate=0.0003
     )
 
     reward_net = BasicRewardNet(
@@ -75,7 +82,7 @@ def main():
 
     gail_trainer = GAIL(
         demonstrations=rollouts,
-        demo_batch_size=256,
+        demo_batch_size=512,
         gen_replay_buffer_capacity=2048,
         n_disc_updates_per_round=4,
         venv=venv,
@@ -84,13 +91,13 @@ def main():
         allow_variable_horizon=True
     )
 
-    gail_trainer.train(300000)
+    gail_trainer.train(1000000)
 
-    learner.save('./train/GAIL/model1')
+    learner.save('./train/A2C_GAIL/model1')
 
-    gail_trainer.train(300000)
+    gail_trainer.train(1000000)
 
-    learner.save('./train/GAIL/model2')
+    learner.save('./train/A2C_GAIL/model2')
 
 if __name__ == '__main__':
     main()

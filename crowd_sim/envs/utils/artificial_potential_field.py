@@ -106,4 +106,4 @@ class ArtificialPotentialField():
 
         pmap_norm = (pmap-np.min(pmap))/(np.max(pmap)-np.min(pmap)) * np.iinfo(np.uint8).max
         pmap_norm = np.round(pmap_norm).astype(np.uint8)
-        return pmap_norm.reshape(pmap.shape[0], pmap.shape[1], 1)
+        return pmap_norm.reshape(1, pmap.shape[0], pmap.shape[1])

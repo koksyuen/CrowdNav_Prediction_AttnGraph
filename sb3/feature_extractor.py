@@ -108,7 +108,7 @@ class Preprocessor(nn.Module):
             # observations shape: (batch size, traj_len, num_human, 2)
             observations = observations.cuda()
             # print(observations.shape, observations.dtype, observations.device)
-            observations = observations.reshape(observations.shape[1], observations.shape[2], observations.shape[3])
+            # observations = observations.reshape(observations.shape[1], observations.shape[2], observations.shape[3])
             human_visibility = observations[-2, :, 0].bool()
             radius = observations[-2, human_visibility, 1]
             gx, gy = observations[-1, 0]
