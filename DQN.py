@@ -3,6 +3,11 @@ from gym.spaces import Discrete
 import numpy as np
 from crowd_sim.envs.crowd_sim_sgan import CrowdSimSgan
 from crowd_sim.envs.crowd_sim_no_pred import CrowdSimNoPred
+from crowd_sim.envs.crowd_sim_sgan_apf import CrowdSimSganApf
+from crowd_sim.envs.crowd_sim_raw import CrowdSimRaw
+from sb3.feature_extractor import Preprocessor, ApfFeaturesExtractor
+from torch.utils.tensorboard import SummaryWriter
+import torch
 import time
 import os
 
@@ -42,12 +47,35 @@ class DiscreteActions(gym.ActionWrapper):
         return self.disc_to_cont[act]
 
 
-class TrainAndLoggingCallback(BaseCallback):
+def make_env(seed, rank, env_config, envNum=1):
+    """
+    Utility function for multiprocessed env.
 
-    def __init__(self, check_freq, save_path, verbose=1):
+    :param env_id: (str) the environment ID
+    :param seed: (int) the inital seed for RNG
+    :param rank: (int) index of the subprocess
+    """
+
+    def _init():
+        env = CrowdSimRaw()
+        # use a seed for reproducibility
+        # Important: use a different seed for each environment
+        # otherwise they would generate the same experiences
+        env.configure(env_config)
+        env.seed(seed + rank)
+        env.setup(seed=seed + rank, num_of_env=envNum)
+        env = DiscreteActions(env, discrete_actions)
+        return env
+
+    return _init
+
+
+class TrainAndLoggingCallback(BaseCallback):
+    def __init__(self, check_freq, save_path, start_step=0, verbose=1):
         super(TrainAndLoggingCallback, self).__init__(verbose)
         self.check_freq = check_freq
         self.save_path = save_path
+        self.offset = start_step
 
     def _init_callback(self):
         if self.save_path is not None:
@@ -55,7 +83,7 @@ class TrainAndLoggingCallback(BaseCallback):
 
     def _on_step(self):
         if self.n_calls % self.check_freq == 0:
-            model_path = os.path.join(self.save_path, 'best_model_{}'.format(self.n_calls))
+            model_path = os.path.join(self.save_path, 'best_model_{}'.format(self.n_calls + self.offset))
             self.model.save(model_path)
 
         return True
@@ -63,22 +91,35 @@ class TrainAndLoggingCallback(BaseCallback):
 
 def main():
     config = Config()
+    num_cpu = 12  # Number of processes to use
+    seed = 100
+    venv = SubprocVecEnv([make_env(seed, i, config, num_cpu) for i in range(num_cpu)])
 
-    env = CrowdSimSgan()
-    env.configure(config)
-    env.setup(seed=0, num_of_env=1)
+    # obs = venv.reset()
+    # writer = SummaryWriter("./logs/dqn_apf_raw")
 
-    env = DiscreteActions(env, discrete_actions)
+    CHECKPOINT_DIR = './train/DQN_RAW/'
+    LOG_DIR = './logs/DQN_RAW/'
 
-    CHECKPOINT_DIR = './train/DQN_SGAN/'
-    LOG_DIR = './logs/SGAN/'
+    # FIRST TIME TRAINING
+    callback = TrainAndLoggingCallback(check_freq=5000, save_path=CHECKPOINT_DIR)
+    policy_kwargs = dict(
+        features_extractor_class=ApfFeaturesExtractor,
+        features_extractor_kwargs=dict(features_dim=512),
+    )
+    model = DQN("CnnPolicy", venv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', tensorboard_log=LOG_DIR,
+                batch_size=64)
 
-    callback = TrainAndLoggingCallback(check_freq=100000, save_path=CHECKPOINT_DIR)
+    # observations = torch.from_numpy(obs).cuda().float()
+    # writer.add_graph(model.policy, observations)
 
-    model = DQN('MultiInputPolicy', env, verbose=1, tensorboard_log=LOG_DIR)
+    # CONTINUAL TRAINING
+    # MODEL_PATH = './train/PPO_SGAN/best_model_4000000'
+    # callback = TrainAndLoggingCallback(check_freq=100000, save_path=CHECKPOINT_DIR, start_step=4000000)
+    # model = PPO.load(MODEL_PATH, env, tensorboard_log=LOG_DIR)
 
-    # model.learn(total_timesteps=2000000, callback=callback)
-    # model.save('latestmodel')
+    model.learn(total_timesteps=int(100000), callback=callback)
+    # model.save('testingmodel')
 
 
 if __name__ == '__main__':
