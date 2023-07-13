@@ -257,34 +257,46 @@ class CrowdSimRaw(CrowdSim):
             human_radius = np.array(self.humans_radius)
 
             self.radius_database = self.robot.radius + comfort_radius + human_radius
-            self.radius_database = self.radius_database.reshape(self.radius_database.shape[0], 1)
+            self.radius_database = self.radius_database.reshape(self.radius_database.shape[0],1)
 
-            # Human Extra Information
-            current_human_visibility = np.zeros((self.human_num, 1))
-            self.human_extra_info = np.concatenate((current_human_visibility, self.radius_database), axis=1)
-            self.human_extra_info = self.human_extra_info.reshape(1, self.human_extra_info.shape[0], self.human_extra_info.shape[1])
-            # print("human extra info: {}".format(human_extra_info.shape))
+        # human's state
+        visible_human_states, num_visible_humans, human_visibility = self.get_num_human_in_fov()
 
-        self.update_last_human_states(reset=reset)
+        self.update_last_human_states(human_visibility, reset=reset)
 
         self.update_human_states_record(reset=reset)
 
+        self.update_visible_human_states_record(human_visibility, reset=reset)
+
         # Human Past Trajectory (local_frame)
         local_human_past_traj = self.global_to_local(self.human_states_record)
+
+        # Human Extra Information
+        current_human_visibility = np.array(human_visibility)
+        current_human_visibility = current_human_visibility.reshape(current_human_visibility.shape[0],1)
+        # print("visibility: {}".format(current_human_visibility.shape))
+        # print("radius: {}".format(self.radius_database.shape))
+        human_extra_info = np.concatenate((current_human_visibility, self.radius_database), axis=1)
+        human_extra_info = human_extra_info.reshape(1, human_extra_info.shape[0], human_extra_info.shape[1])
+        # print("human extra info: {}".format(human_extra_info.shape))
 
         ### Calculates goal coordinate in local frame
         gx, gy = self.calculate_local_goal()
 
         # print("traj: {}".format(local_relative_human_past_traj.shape))
         ### add radius and human visibility
-        obs = np.concatenate((local_human_past_traj, self.human_extra_info), axis=0)
+        obs = np.concatenate((local_human_past_traj, human_extra_info), axis=0)
         # print("obs1: {}".format(obs.shape))
 
         ### add gx, gy and num_visible_humans
         global_info = np.zeros((1, self.human_num, 2), dtype=np.float32)
         global_info[0,0,0] = gx
         global_info[0,0,1] = gy
+        global_info[0,1,0] = num_visible_humans
         obs = np.concatenate((obs, global_info), axis=0)
+
+        # record for next step
+        self.previous_human_visibility = np.array(human_visibility)
 
         return obs
 
@@ -297,6 +309,7 @@ class CrowdSimRaw(CrowdSim):
         state = JointState(self.robot.get_full_state(), ob)
         action = self.robot_orca.predict(state)
         return action.vx, action.vy
+
 
     def calculate_local_goal(self):
         """
@@ -359,6 +372,32 @@ class CrowdSimRaw(CrowdSim):
         traj_local = traj_local_hom[:, :, :-1]  # remove the homogeneous coordinate
         return traj_local
 
+    # extract visible_human_states_record from human_states_record
+    def update_visible_human_states_record(self, human_visibility, reset):
+        """
+        update self.visible_human_states_record (input to SocialGAN)
+        dimension of visible_human_states_record array: obs_len * num_of_visible_humans * 2
+        reset: True if this function is called by reset, False if called by step
+        :return:
+        """
+        current_human_visibility = np.array(human_visibility)
+
+        if not reset:
+            # previous frame is not visible, but current frame is visible
+            # (current_visibility XOR previous_visibility) AND current_visibility
+            human_first_visibility = np.bitwise_and(
+                np.bitwise_xor(self.previous_human_visibility, current_human_visibility),
+                current_human_visibility)
+
+            # since: the previous frame is not visible, but current frame is visible
+            # thus: the states of previous frames are set to the states observed in the current frame
+            self.human_states_record[:, human_first_visibility, :] = self.last_human_states[human_first_visibility, :2]
+
+        # print('human_states_record: {}, current_human_visibility: {}'.format(self.human_states_record.shape, current_human_visibility.shape))
+
+        # extract visible humans' states
+        # self.visible_human_states_record = self.human_states_record[:, current_human_visibility, :]
+
     # update the human_states_record (queue)
     def update_human_states_record(self, reset):
         """
@@ -375,18 +414,6 @@ class CrowdSimRaw(CrowdSim):
             # push latest humans' states into the queue
             self.human_states_record[:-1] = self.human_states_record[1:]
             self.human_states_record[-1] = self.last_human_states[:, :2]
-
-    # update the robot belief of human coordinates without considering FOV
-    def update_last_human_states(self, reset=False):
-        """
-        update the self.last_human_states array
-        reset: True if this function is called by reset, False if called by step
-        :return:
-        """
-        for i in range(self.human_num):
-            humanS = np.array(self.humans[i].get_observable_state_list())
-            self.last_human_states[i, :] = humanS
-
 
     def record_humans_emotion(self):
         for i in range(self.human_num):

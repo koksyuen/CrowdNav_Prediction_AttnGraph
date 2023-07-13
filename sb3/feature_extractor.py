@@ -105,7 +105,7 @@ class Preprocessor(nn.Module):
 
     def forward(self, observations):
         with torch.no_grad():
-            # observations shape: (batch size, traj_len, num_human, 2)
+            # observations shape: (batch size, obs_len + 2, num_human, 2)
             observations = observations.cuda()
             # print(observations.shape, observations.dtype, observations.device)
             # observations = observations.reshape(observations.shape[1], observations.shape[2], observations.shape[3])
