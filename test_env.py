@@ -4,6 +4,8 @@ import numpy as np
 from crowd_sim.envs.crowd_sim_sgan import CrowdSimSgan
 from crowd_sim.envs.crowd_sim_sgan_apf import CrowdSimSganApf
 from crowd_sim.envs.crowd_sim_no_pred import CrowdSimNoPred
+from crowd_sim.envs.crowd_sim_raw import CrowdSimRaw
+from sb3.feature_extractor import Preprocessor, ApfFeaturesExtractor
 import time
 import os
 import matplotlib.pyplot as plt
@@ -71,21 +73,27 @@ def main():
     ax1.set_xlabel('x(m)', fontsize=16)
     ax1.set_ylabel('y(m)', fontsize=16)
 
-    plt.figure(2)
-    ax2 = plt.subplot()
-    ax2.set_xlabel('x (grid)', fontsize=16)
-    ax2.set_ylabel('y (grid)', fontsize=16)
+    # plt.figure(2)
+    # ax2 = plt.subplot()
+    # ax2.set_xlabel('x (grid)', fontsize=16)
+    # ax2.set_ylabel('y (grid)', fontsize=16)
 
     config = Config()
 
-    env = CrowdSimSganApf()
+    env = CrowdSimRaw()
     env.configure(config)
-    env.setup(seed=0, num_of_env=1, ax=ax1)
+    env.setup(seed=0, num_of_env=1, ax=None)
 
     # env = DiscreteActions(env, discrete_actions)
 
-    MODEL_PATH = './train/GAIL_remote/model6'
-    model = PPO.load(MODEL_PATH, env)
+    # MODEL_PATH = './train/GAIL_remote/model6'
+    # model = PPO.load(MODEL_PATH, env)
+
+    policy_kwargs = dict(
+        features_extractor_class=ApfFeaturesExtractor,
+        features_extractor_kwargs=dict(features_dim=512),
+    )
+    model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
 
     episodes = 5
     for episode in range(1, episodes + 1):
@@ -96,8 +104,8 @@ def main():
         step = 0
 
         while not done:
-            plt.figure(1)
-            env.render()
+            # plt.figure(1)
+            # env.render()
             # action = env.action_space.sample()
             # vx, vy = env.calculate_orca()
             # action = np.array([vx, vy])
@@ -108,9 +116,9 @@ def main():
             obs, reward, done, info = env.step(action_rl[0])
             # obs, reward, done, info = env.step(action)
             end_time = time.time()
-            plt.figure(2)
-            plt.imshow(np.rot90(obs.reshape(obs.shape[0], obs.shape[1]), -1), cmap='gray')
-            plt.pause(0.01)
+            # plt.figure(2)
+            # plt.imshow(np.rot90(obs.reshape(obs.shape[0], obs.shape[1]), -1), cmap='gray')
+            # plt.pause(0.01)
             avg_time += (end_time - start_time)
             step += 1
             score += reward

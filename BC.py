@@ -12,8 +12,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data.dataset import Dataset, random_split
+from torch.utils.data.dataset import Dataset, Subset
 from torch.utils.tensorboard import SummaryWriter
+from sklearn.model_selection import KFold
 
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecTransposeImage
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -21,6 +22,7 @@ from stable_baselines3 import PPO, A2C
 
 from arguments import get_args
 from crowd_nav.configs.config import Config
+
 config = Config()
 
 training = True
@@ -49,9 +51,9 @@ class BehaviourCloning():
                  log_interval=100,
                  device='cuda',
                  seed=1,
+                 kfold=5,
                  test_batch_size=64,
-                 train_expert_dataset=None,
-                 test_expert_dataset=None,
+                 expert_dataset=None,
                  tensorboard_log=None
                  ):
         torch.manual_seed(seed)
@@ -65,26 +67,19 @@ class BehaviourCloning():
         self.device = device
         self.log_interval = log_interval
         self.writer = SummaryWriter(tensorboard_log)
-
-        kwargs = {"num_workers": 1, "pin_memory": True}
-        self.train_loader = torch.utils.data.DataLoader(
-            dataset=train_expert_dataset, batch_size=batch_size, shuffle=True, **kwargs
-        )
-        self.test_loader = torch.utils.data.DataLoader(
-            dataset=test_expert_dataset,
-            batch_size=test_batch_size,
-            shuffle=True,
-            **kwargs,
-        )
+        self.splits = KFold(n_splits=kfold, shuffle=True, random_state=42)
+        self.dataset = expert_dataset
+        self.batch_size = batch_size
+        self.test_batch_size = test_batch_size
 
         # Define an Optimizer and a learning rate schedule.
         self.optimizer = optim.Adadelta(self.model.parameters(), lr=learning_rate)
         self.scheduler = StepLR(self.optimizer, step_size=1, gamma=scheduler_gamma)
 
-    def train(self, epoch):
+    def train(self, epoch, train_loader):
         self.model.train()
 
-        for batch_idx, (data, target) in enumerate(self.train_loader):
+        for batch_idx, (data, target) in enumerate(train_loader):
             data, target = data.to(self.device), target.to(self.device)
             self.optimizer.zero_grad()
 
@@ -111,20 +106,20 @@ class BehaviourCloning():
                     "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
                         epoch,
                         batch_idx * len(data),
-                        len(self.train_loader.dataset),
-                        100.0 * batch_idx / len(self.train_loader),
+                        len(train_loader.dataset),
+                        100.0 * batch_idx / len(train_loader),
                         loss.item(),
                     )
                 )
                 self.writer.add_scalar('training loss',
                                        scalar_value=loss.item(),
-                                       global_step=batch_idx * len(data))
+                                       global_step=epoch * batch_idx * len(data))
 
-    def test(self, epoch):
+    def test(self, epoch, test_loader):
         self.model.eval()
-        test_loss = 0
+        total_test_loss = 0.0
         with torch.no_grad():
-            for data, target in self.test_loader:
+            for data, target in test_loader:
                 data, target = data.to(self.device), target.to(self.device)
 
                 if isinstance(self.env.action_space, gym.spaces.Box):
@@ -141,23 +136,43 @@ class BehaviourCloning():
                     dist = self.model.get_distribution(data)
                     action_prediction = dist.distribution.logits
                     target = target.long()
-
                 test_loss = self.criterion(action_prediction, target)
-        test_loss /= len(self.test_loader.dataset)
-        print(f"Test set: Average loss: {test_loss:.4f}")
-        self.writer.add_scalar('testing loss',
-                               scalar_value=test_loss,
+                total_test_loss = total_test_loss + test_loss.item()
+        print(f"Test set: Average loss: {total_test_loss:.4f}")
+        self.writer.add_scalar('total test loss',
+                               scalar_value=total_test_loss,
                                global_step=epoch)
 
     def learn(self, epochs, save_interval, checkpoint_dir):
-        for epoch in range(1, epochs + 1):
-            self.train(epoch)
-            self.test(epoch)
-            self.scheduler.step()
-            if epoch % save_interval== 0:
-                self.student.policy = self.model
-                model_path = os.path.join(checkpoint_dir, 'best_model_{}'.format(epoch))
-                self.student.save(model_path)
+        fold_epochs = int(epochs / self.splits.get_n_splits())
+
+        for fold, (train_idx, test_idx) in enumerate(self.splits.split(np.arange(len(self.dataset)))):
+
+            train_dataset = Subset(self.dataset, train_idx)
+            test_dataset = Subset(self.dataset, test_idx)
+            print("train_expert_dataset: ", len(train_dataset))
+            print("test_expert_dataset: ", len(test_dataset))
+            kwargs = {"num_workers": 1, "pin_memory": True}
+            train_loader = torch.utils.data.DataLoader(
+                dataset=train_dataset, batch_size=self.batch_size, shuffle=True, **kwargs
+            )
+            test_loader = torch.utils.data.DataLoader(
+                dataset=test_dataset,
+                batch_size=self.test_batch_size,
+                shuffle=True,
+                **kwargs,
+            )
+            for epoch in range(1, fold_epochs + 1):
+                total_epoch = epoch + (fold * fold_epochs)
+                self.train(total_epoch, train_loader)
+                self.test(total_epoch, test_loader)
+                self.scheduler.step()
+                if total_epoch % save_interval == 0:
+                    self.student.policy = self.model
+                    model_path = os.path.join(checkpoint_dir, 'best_model_{}'.format(total_epoch))
+                    print('Saving best_model_{} to {}'.format(total_epoch, model_path))
+                    self.student.save(model_path)
+            self.writer.close()
 
 
 def collect_dataset():
@@ -200,21 +215,12 @@ def train_bc():
 
     CHECKPOINT_DIR = './train/BC_APF_RAW/'
     LOG_DIR = './logs/BC_APF_RAW/'
-    DATASET_NAME = 'apf_raw'
+    DATASET_NAME = 'BC_dataset_nofov_test.npz'
 
     np_data = np.load(DATASET_NAME)
 
     expert_dataset = ExpertDataSet(np_data['expert_observations'], np_data['expert_actions'])
-
-    train_size = int(0.8 * len(expert_dataset))
-
-    test_size = len(expert_dataset) - train_size
-
-    train_expert_dataset, test_expert_dataset = random_split(expert_dataset,
-                                                             [train_size, test_size])
-
-    print("test_expert_dataset: ", len(test_expert_dataset))
-    print("train_expert_dataset: ", len(train_expert_dataset))
+    print("expert_dataset: ", len(expert_dataset))
 
     policy_kwargs = dict(
         features_extractor_class=ApfFeaturesExtractor,
@@ -222,10 +228,23 @@ def train_bc():
     )
     model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
 
+    # for name, param in model.policy.named_parameters():
+    #     if param.requires_grad:
+    #         print("GRAD: {}".format(name))
+    #         print(param)
+    #     else:
+    #         print("NO GRAD: {}".format(name))
+
     bc = BehaviourCloning(student=model,
                           env=env,
-                          train_expert_dataset=train_expert_dataset,
-                          test_expert_dataset=test_expert_dataset,
+                          batch_size=64,
+                          scheduler_gamma=0.7,
+                          learning_rate=1.0,
+                          log_interval=1000,
+                          device='cuda',
+                          seed=1,
+                          test_batch_size=64,
+                          expert_dataset=expert_dataset,
                           tensorboard_log=LOG_DIR)
     bc.learn(epochs=int(1e4), save_interval=1e3, checkpoint_dir=CHECKPOINT_DIR)
 
