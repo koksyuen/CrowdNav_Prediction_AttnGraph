@@ -107,15 +107,15 @@ def main():
             # plt.figure(1)
             # env.render()
             # action = env.action_space.sample()
-            # vx, vy = env.calculate_orca()
-            # action = np.array([vx, vy])
+            vx, vy = env.calculate_orca()
+            action = np.array([vx, vy])
+            start_time = time.time()
             action_rl = model.predict(obs)
+            end_time = time.time()
             # print("action_shape".format(action_rl.shape))
             # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
-            start_time = time.time()
-            obs, reward, done, info = env.step(action_rl[0])
+            obs, reward, done, info = env.step(action)
             # obs, reward, done, info = env.step(action)
-            end_time = time.time()
             # plt.figure(2)
             # plt.imshow(np.rot90(obs.reshape(obs.shape[0], obs.shape[1]), -1), cmap='gray')
             # plt.pause(0.01)
@@ -123,7 +123,7 @@ def main():
             step += 1
             score += reward
         print('Episode:{} Score:{}'.format(episode, score))
-        print('average step time ({} steps): {}s'.format(step, avg_time / step))
+        print('average inference time ({} steps): {}s'.format(step, avg_time / step))
     env.close()
 
 

@@ -111,9 +111,10 @@ class BehaviourCloning():
                         loss.item(),
                     )
                 )
+                total_step = ((epoch-1) * len(train_loader.dataset)) + (batch_idx * len(data))
                 self.writer.add_scalar('training loss',
                                        scalar_value=loss.item(),
-                                       global_step=epoch * batch_idx * len(data))
+                                       global_step=total_step)
 
     def test(self, epoch, test_loader):
         self.model.eval()
@@ -180,6 +181,8 @@ def collect_dataset():
     env.configure(config)
     env.setup(seed=0, num_of_env=1, ax=None)
 
+    DATASET_NAME = 'BC_dataset_nofov_test'
+
     num_interactions = int(6e6)
 
     if isinstance(env.action_space, gym.spaces.Box):
@@ -193,7 +196,6 @@ def collect_dataset():
     obs = env.reset()
 
     for i in tqdm(range(num_interactions)):
-        env.render()
         action = np.array(env.calculate_orca())
         expert_observations[i] = obs
         expert_actions[i] = action
@@ -202,7 +204,7 @@ def collect_dataset():
             obs = env.reset()
 
     np.savez_compressed(
-        dataset_name,
+        DATASET_NAME,
         expert_actions=expert_actions,
         expert_observations=expert_observations,
     )
@@ -215,7 +217,7 @@ def train_bc():
 
     CHECKPOINT_DIR = './train/BC_APF_RAW/'
     LOG_DIR = './logs/BC_APF_RAW/'
-    DATASET_NAME = 'BC_dataset_nofov_test.npz'
+    DATASET_NAME = 'BC_dataset_nofov_small.npz'
 
     np_data = np.load(DATASET_NAME)
 
@@ -246,7 +248,7 @@ def train_bc():
                           test_batch_size=64,
                           expert_dataset=expert_dataset,
                           tensorboard_log=LOG_DIR)
-    bc.learn(epochs=int(1e4), save_interval=1e3, checkpoint_dir=CHECKPOINT_DIR)
+    bc.learn(epochs=int(1e3), save_interval=int(1e2), checkpoint_dir=CHECKPOINT_DIR)
 
 
 def main():
