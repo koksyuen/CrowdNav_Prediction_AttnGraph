@@ -5,7 +5,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 import sys
 
-sys.path.append('/home/koksyuen/python_project/sgan')
+sys.path.append('../sgan')
 
 from attrdict import AttrDict
 from sgan.models import TrajectoryGenerator
@@ -20,7 +20,7 @@ DECAY = [1.0, 0.9, 0.81, 0.73, 0.66, 0.59, 0.53, 0.48]
 
 class Preprocessor(nn.Module):
     def __init__(self, map_size=10.0, map_resolution=0.05,
-                 model_path='/home/koksyuen/python_project/sgan/models/sgan-p-models/eth_8_model.pt'):
+                 model_path='../sgan/models/sgan-p-models/eth_8_model.pt'):
         super(Preprocessor, self).__init__()
 
         with torch.no_grad():
