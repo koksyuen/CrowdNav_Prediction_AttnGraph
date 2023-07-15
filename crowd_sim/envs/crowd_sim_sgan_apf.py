@@ -20,7 +20,7 @@ from crowd_sim.envs.utils.state import JointState
 
 import sys
 
-sys.path.append('../sgan')
+sys.path.append('../../../sgan')
 from predictor import socialGAN
 
 
