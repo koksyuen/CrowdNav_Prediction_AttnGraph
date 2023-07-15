@@ -20,9 +20,6 @@ from crowd_sim.envs.utils.state import JointState
 
 import sys
 
-sys.path.append('/home/koksyuen/python_project/sgan')
-from sgan.utils import abs_to_relative
-
 
 class CrowdSimRaw(CrowdSim):
     """

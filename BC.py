@@ -26,7 +26,6 @@ from crowd_nav.configs.config import Config
 config = Config()
 
 training = True
-dataset_name = "apf_raw"
 
 
 class ExpertDataSet(Dataset):
