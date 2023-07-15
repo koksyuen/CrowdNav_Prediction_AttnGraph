@@ -8,7 +8,7 @@ import copy
 import time
 
 from numpy.linalg import norm
-from crowd_sim.envs import *
+from crowd_sim.envs import CrowdSim
 from crowd_sim.envs.utils.human import Human
 from crowd_sim.envs.utils.robot import Robot
 from crowd_sim.envs.utils.info import *
