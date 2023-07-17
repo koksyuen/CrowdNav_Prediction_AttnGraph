@@ -62,35 +62,34 @@ class TrainAndLoggingCallback(BaseCallback):
 
 def main():
     config = Config()
-    num_cpu = 10  # Number of processes to use
-    seed = 100
+    num_cpu = 6  # Number of processes to use
+    seed = 1
     venv = SubprocVecEnv([make_env(seed, i, config, num_cpu) for i in range(num_cpu)])
 
-    obs = venv.reset()
+    PRETRAIN_MODEL_PATH = './train/BC/best_dict_27.pth'
+    policy_dict = torch.load(PRETRAIN_MODEL_PATH)
 
-    writer = SummaryWriter("./logs/ppo_apf_raw")
-
-    CHECKPOINT_DIR = './train/PPO_RAW/'
-    LOG_DIR = './logs/APF_RAW/'
+    CHECKPOINT_DIR = './train/PPO_NO_EMOTION/'
+    LOG_DIR = './logs/NO_EMOTION/'
 
     # FIRST TIME TRAINING
-    callback = TrainAndLoggingCallback(check_freq=5000, save_path=CHECKPOINT_DIR)
+    callback = TrainAndLoggingCallback(check_freq=int(1e5), save_path=CHECKPOINT_DIR)
     policy_kwargs = dict(
         features_extractor_class=ApfFeaturesExtractor,
         features_extractor_kwargs=dict(features_dim=512),
     )
-    model = PPO("CnnPolicy", venv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', tensorboard_log=LOG_DIR, batch_size=64)
-
-    observations = torch.from_numpy(obs).cuda().float()
-    writer.add_graph(model.policy, observations)
+    model = PPO("CnnPolicy", venv, policy_kwargs=policy_kwargs, verbose=1,
+                device='cuda', tensorboard_log=LOG_DIR, batch_size=64)
+    model.policy.load_state_dict(policy_dict)
 
     # CONTINUAL TRAINING
     # MODEL_PATH = './train/PPO_SGAN/best_model_4000000'
     # callback = TrainAndLoggingCallback(check_freq=100000, save_path=CHECKPOINT_DIR, start_step=4000000)
     # model = PPO.load(MODEL_PATH, env, tensorboard_log=LOG_DIR)
 
-    model.learn(total_timesteps=int(100000), callback=callback)
-    model.save('testingmodel')
+    model.learn(total_timesteps=int(1e7), callback=callback)
+    model_path = os.path.join(CHECKPOINT_DIR, 'latest_model')
+    model.save(model_path)
 
 
 if __name__ == '__main__':

@@ -82,18 +82,18 @@ def main():
 
     env = CrowdSimRaw()
     env.configure(config)
-    env.setup(seed=0, num_of_env=1, ax=None)
+    env.setup(seed=900000, num_of_env=1, ax=ax1)
 
     # env = DiscreteActions(env, discrete_actions)
 
-    # MODEL_PATH = './train/GAIL_remote/model6'
-    # model = PPO.load(MODEL_PATH, env)
+    MODEL_PATH = './train/BC/best_model_50'
+    model = PPO.load(MODEL_PATH, env)
 
-    policy_kwargs = dict(
-        features_extractor_class=ApfFeaturesExtractor,
-        features_extractor_kwargs=dict(features_dim=512),
-    )
-    model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
+    # policy_kwargs = dict(
+    #     features_extractor_class=ApfFeaturesExtractor,
+    #     features_extractor_kwargs=dict(features_dim=512),
+    # )
+    # model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
 
     episodes = 5
     for episode in range(1, episodes + 1):
@@ -105,16 +105,16 @@ def main():
 
         while not done:
             # plt.figure(1)
-            # env.render()
+            env.render()
             # action = env.action_space.sample()
-            vx, vy = env.calculate_orca()
-            action = np.array([vx, vy])
+            # vx, vy = env.calculate_orca()
+            # action = np.array([vx, vy])
             start_time = time.time()
             action_rl = model.predict(obs)
             end_time = time.time()
-            # print("action_shape".format(action_rl.shape))
-            # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
-            obs, reward, done, info = env.step(action)
+            print("action_shape".format(action_rl.shape))
+            print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
+            obs, reward, done, info = env.step(action_rl)
             # obs, reward, done, info = env.step(action)
             # plt.figure(2)
             # plt.imshow(np.rot90(obs.reshape(obs.shape[0], obs.shape[1]), -1), cmap='gray')

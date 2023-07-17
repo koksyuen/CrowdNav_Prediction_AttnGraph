@@ -217,10 +217,11 @@ class CrowdSimRaw(CrowdSim):
             potential_cur = np.linalg.norm(
                 np.array([self.robot.px, self.robot.py]) - np.array(self.robot.get_goal_position()))
             reward = 2 * (-abs(potential_cur) - self.potential)
+            episode_info = Potential(previous_potential=abs(self.potential),
+                                     current_potential=abs(potential_cur),
+                                     reward=reward)
             self.potential = -abs(potential_cur)
-
             done = False
-            episode_info = Nothing()
 
         # if the robot is near collision/arrival, it should be able to turn a large angle
         if self.robot.kinematics == 'unicycle':
@@ -440,10 +441,11 @@ class CrowdSimRaw(CrowdSim):
         ##### compute_ob goes here!!!!!
         ob = self.generate_ob(reset=False)
 
-        if self.robot.policy.name in ['srnn']:
-            info = {'info': episode_info}
-        else:  # for orca and sf
-            info = episode_info
+        # if self.robot.policy.name in ['srnn']:
+        #     info = {'info': episode_info}
+        # else:  # for orca and sf
+        #     info = episode_info
+        info = episode_info
 
         # Update all humans' goals randomly midway through episode
         if self.random_goal_changing:
@@ -584,31 +586,31 @@ class CrowdSimRaw(CrowdSim):
             plt.text(-9.8, yy, emotion, color=color, fontsize=12)
             yy -= 0.6
 
-        # plot history of detected human positions
-        for i in range(len(self.humans)):
-            # Caution: this is actually current human visibility (bcuz render is called after reset or step)
-            if self.previous_human_visibility[i]:
-                # add history of positions of each human
-                for j in range(self.obs_len - 1):
-                    circle = plt.Circle(self.human_states_record[j][i], self.humans[i].radius,
-                                        fill=False, color='tab:olive', linewidth=0.5,
-                                        alpha=0.6 * (j + 1) / self.obs_len)
-                    ax.add_artist(circle)
-                    artists.append(circle)
-
-        # plot predicted human trajectory
-        sgan_i = 0
-        for i in range(len(self.humans)):
-            # Caution: this is actually current human visibility (bcuz render is called after reset or step)
-            if self.previous_human_visibility[i]:
-                # add predicted positions of each human
-                for j in range(self.pred_len):
-                    circle = plt.Circle(self.predicted_human_states[j][sgan_i], self.humans[i].radius,
-                                        fill=False, color='tab:orange', linewidth=1.0,
-                                        alpha=0.8 / (j + 1))
-                    ax.add_artist(circle)
-                    artists.append(circle)
-                sgan_i += 1
+        # # plot history of detected human positions
+        # for i in range(len(self.humans)):
+        #     # Caution: this is actually current human visibility (bcuz render is called after reset or step)
+        #     if self.previous_human_visibility[i]:
+        #         # add history of positions of each human
+        #         for j in range(self.obs_len - 1):
+        #             circle = plt.Circle(self.human_states_record[j][i], self.humans[i].radius,
+        #                                 fill=False, color='tab:olive', linewidth=0.5,
+        #                                 alpha=0.6 * (j + 1) / self.obs_len)
+        #             ax.add_artist(circle)
+        #             artists.append(circle)
+        #
+        # # plot predicted human trajectory
+        # sgan_i = 0
+        # for i in range(len(self.humans)):
+        #     # Caution: this is actually current human visibility (bcuz render is called after reset or step)
+        #     if self.previous_human_visibility[i]:
+        #         # add predicted positions of each human
+        #         for j in range(self.pred_len):
+        #             circle = plt.Circle(self.predicted_human_states[j][sgan_i], self.humans[i].radius,
+        #                                 fill=False, color='tab:orange', linewidth=1.0,
+        #                                 alpha=0.8 / (j + 1))
+        #             ax.add_artist(circle)
+        #             artists.append(circle)
+        #         sgan_i += 1
 
         plt.pause(0.01)
         for item in artists:

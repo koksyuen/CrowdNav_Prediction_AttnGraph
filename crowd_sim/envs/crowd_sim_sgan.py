@@ -17,7 +17,7 @@ from crowd_sim.envs.utils.state import *
 from crowd_sim.envs.utils.action import ActionRot, ActionXY
 
 import sys
-sys.path.append('../../../sgan')
+sys.path.append('/home/koksyuen/python_project/sgan')
 from predictor import socialGAN
 
 

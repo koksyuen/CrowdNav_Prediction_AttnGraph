@@ -31,7 +31,7 @@ class Config(object):
     reward.success_reward = 10
     reward.collision_penalty = -20
     # discomfort distance
-    reward.discomfort_dist = 0.25
+    reward.discomfort_dist = 0.2668
     reward.discomfort_penalty_factor = 10
     reward.gamma = 0.99
 

@@ -138,7 +138,7 @@ class BehaviourCloning():
                     target = target.long()
                 test_loss = self.criterion(action_prediction, target)
                 total_test_loss = total_test_loss + test_loss.item()
-        print(f"Test set: Average loss: {total_test_loss:.4f}")
+        print(f"Test set: Total loss: {total_test_loss:.4f}")
         self.writer.add_scalar('total test loss',
                                scalar_value=total_test_loss,
                                global_step=epoch)
