@@ -441,11 +441,11 @@ class CrowdSimRaw(CrowdSim):
         ##### compute_ob goes here!!!!!
         ob = self.generate_ob(reset=False)
 
-        # if self.robot.policy.name in ['srnn']:
-        #     info = {'info': episode_info}
-        # else:  # for orca and sf
-        #     info = episode_info
-        info = episode_info
+        if self.robot.policy.name in ['srnn']:
+            info = {'info': episode_info}
+        else:  # for orca and sf
+            info = episode_info
+        # info = episode_info
 
         # Update all humans' goals randomly midway through episode
         if self.random_goal_changing:
