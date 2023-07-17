@@ -14,6 +14,7 @@ import os
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3 import PPO
 
 from arguments import get_args
@@ -36,6 +37,7 @@ def make_env(seed, rank, env_config, envNum=1):
         env.configure(env_config)
         env.seed(seed + rank)
         env.setup(seed=seed + rank, num_of_env=envNum)
+        env = Monitor(env)
         return env
 
     return _init
@@ -68,6 +70,7 @@ def main():
 
     PRETRAIN_MODEL_PATH = './train/BC/best_dict_27.pth'
     policy_dict = torch.load(PRETRAIN_MODEL_PATH)
+    print(policy_dict)
 
     CHECKPOINT_DIR = './train/PPO_NO_EMOTION/'
     LOG_DIR = './logs/NO_EMOTION/'
@@ -79,7 +82,7 @@ def main():
         features_extractor_kwargs=dict(features_dim=512),
     )
     model = PPO("CnnPolicy", venv, policy_kwargs=policy_kwargs, verbose=1,
-                device='cuda', tensorboard_log=LOG_DIR, batch_size=64)
+                device='cuda', tensorboard_log=LOG_DIR, batch_size=64, ent_coef=0.01)
     model.policy.load_state_dict(policy_dict)
 
     # CONTINUAL TRAINING
