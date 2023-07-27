@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3 import DQN, PPO, A2C
 
 from arguments import get_args
@@ -64,14 +65,59 @@ class TrainAndLoggingCallback(BaseCallback):
 
         return True
 
+def make_env(seed, rank, env_config, envNum=1):
+    """
+    Utility function for multiprocessed env.
+
+    :param env_id: (str) the environment ID
+    :param seed: (int) the inital seed for RNG
+    :param rank: (int) index of the subprocess
+    """
+
+    def _init():
+        env = CrowdSimRaw()
+        # use a seed for reproducibility
+        # Important: use a different seed for each environment
+        # otherwise they would generate the same experiences
+        env.configure(env_config)
+        env.seed(seed + rank)
+        env.setup(seed=seed + rank, num_of_env=envNum)
+        env = Monitor(env)
+        return env
+
+    return _init
+
+def make_discrete_env(seed, rank, env_config, envNum=1):
+    """
+    Utility function for multiprocessed env.
+
+    :param env_id: (str) the environment ID
+    :param seed: (int) the inital seed for RNG
+    :param rank: (int) index of the subprocess
+    """
+
+    def _init():
+        env = CrowdSimRaw()
+        # use a seed for reproducibility
+        # Important: use a different seed for each environment
+        # otherwise they would generate the same experiences
+        env.configure(env_config)
+        env.seed(seed + rank)
+        env.setup(seed=seed + rank, num_of_env=envNum)
+        env = DiscreteActions(env, discrete_actions)
+        env = Monitor(env)
+        return env
+
+    return _init
+
 
 def main():
-    plt.figure(1, figsize=(7, 7))
-    ax1 = plt.subplot()
-    ax1.set_xlim(-10, 10)
-    ax1.set_ylim(-10, 10)
-    ax1.set_xlabel('x(m)', fontsize=16)
-    ax1.set_ylabel('y(m)', fontsize=16)
+    # plt.figure(1, figsize=(7, 7))
+    # ax1 = plt.subplot()
+    # ax1.set_xlim(-10, 10)
+    # ax1.set_ylim(-10, 10)
+    # ax1.set_xlabel('x(m)', fontsize=16)
+    # ax1.set_ylabel('y(m)', fontsize=16)
 
     # plt.figure(2)
     # ax2 = plt.subplot()
@@ -82,18 +128,19 @@ def main():
 
     env = CrowdSimRaw()
     env.configure(config)
-    env.setup(seed=900000, num_of_env=1, ax=ax1)
+    env.setup(seed=900000, num_of_env=1, ax=None)
 
-    # env = DiscreteActions(env, discrete_actions)
+    denv = DiscreteActions(env, discrete_actions)
 
-    MODEL_PATH = './train/BC/best_model_50'
-    model = PPO.load(MODEL_PATH, env)
+    # MODEL_PATH = './train/BC/best_model_50'
+    # model = PPO.load(MODEL_PATH, env)
 
-    # policy_kwargs = dict(
-    #     features_extractor_class=ApfFeaturesExtractor,
-    #     features_extractor_kwargs=dict(features_dim=512),
-    # )
-    # model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
+    policy_kwargs = dict(
+        features_extractor_class=ApfFeaturesExtractor,
+        features_extractor_kwargs=dict(features_dim=512),
+    )
+    model1 = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
+    model2 = DQN("CnnPolicy", denv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=32)
 
     episodes = 5
     for episode in range(1, episodes + 1):
@@ -105,25 +152,26 @@ def main():
 
         while not done:
             # plt.figure(1)
-            env.render()
+            # env.render()
             # action = env.action_space.sample()
             # vx, vy = env.calculate_orca()
             # action = np.array([vx, vy])
-            start_time = time.time()
-            action_rl = model.predict(obs)
-            end_time = time.time()
-            print("action_shape".format(action_rl.shape))
-            print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
-            obs, reward, done, info = env.step(action_rl)
-            # obs, reward, done, info = env.step(action)
-            # plt.figure(2)
-            # plt.imshow(np.rot90(obs.reshape(obs.shape[0], obs.shape[1]), -1), cmap='gray')
-            # plt.pause(0.01)
-            avg_time += (end_time - start_time)
+            # start_time = time.time()
+            action_rl = model2.predict(obs, deterministic=True)
+            print(action_rl[0])
+            # end_time = time.time()
+            # print("action_shape".format(action_rl.shape))
+            # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
+            # obs, reward, done, info = env.step(action_rl)
+            obs, reward, done, info = env.step(action)
+            plt.figure(2)
+            plt.imshow(np.rot90(obs.reshape(obs.shape[1], obs.shape[2]), -1), cmap='gray')
+            plt.pause(0.01)
+            # avg_time += (end_time - start_time)
             step += 1
             score += reward
         print('Episode:{} Score:{}'.format(episode, score))
-        print('average inference time ({} steps): {}s'.format(step, avg_time / step))
+        # print('average inference time ({} steps): {}s'.format(step, avg_time / step))
     env.close()
 
 

@@ -14,27 +14,37 @@ import os
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3 import DQN
+from stable_baselines3.common.monitor import Monitor
+# from stable_baselines3 import DQN
+from sb3.dqn.dqn import DQN
 
 from arguments import get_args
 from crowd_nav.configs.config import Config
 
-'''
-0: Vx=0, Vy=0
-1: Vx=1, Vy=0
-2: Vx=0, Vy=1
-3: Vx=-1, Vy=0
-4: Vx=0, Vy=-1
-5: Vx=1, Vy=1
-6: Vx=-1, Vy=-1
-7: Vx=1, Vy=-1
-8: Vx=-1, Vy=1
-'''
-discrete_actions = [np.array([0, 0]), np.array([1, 0]),
-                    np.array([0, 1]), np.array([-1, 0]),
-                    np.array([0, -1]), np.array([1, 1]),
-                    np.array([-1, -1]), np.array([1, -1]),
-                    np.array([-1, 1])]
+# '''
+# 0: Vx=0, Vy=0
+# 1: Vx=1, Vy=0
+# 2: Vx=0, Vy=1
+# 3: Vx=-1, Vy=0
+# 4: Vx=0, Vy=-1
+# 5: Vx=1, Vy=1
+# 6: Vx=-1, Vy=-1
+# 7: Vx=1, Vy=-1
+# 8: Vx=-1, Vy=1
+# '''
+# discrete_actions = [np.array([0, 0]), np.array([1, 0]),
+#                     np.array([0, 1]), np.array([-1, 0]),
+#                     np.array([0, -1]), np.array([1, 1]),
+#                     np.array([-1, -1]), np.array([1, -1]),
+#                     np.array([-1, 1])]
+
+U_A = [-1.0, -0.5, 0.0, 0.5, 1.0]
+u_a = np.array(U_A)
+Y, X = np.meshgrid(u_a, u_a)
+discrete_actions = np.stack((X, Y), axis=-1)
+discrete_actions = discrete_actions.reshape((-1, 2))
+# print(len(discrete_actions))
+
 
 
 class DiscreteActions(gym.ActionWrapper):
@@ -42,6 +52,7 @@ class DiscreteActions(gym.ActionWrapper):
         super().__init__(env)
         self.disc_to_cont = disc_to_cont
         self.action_space = Discrete(len(disc_to_cont))
+        # self.action_space = Discrete(disc_to_cont.shape[0])
 
     def action(self, act):
         return self.disc_to_cont[act]
@@ -65,6 +76,7 @@ def make_env(seed, rank, env_config, envNum=1):
         env.seed(seed + rank)
         env.setup(seed=seed + rank, num_of_env=envNum)
         env = DiscreteActions(env, discrete_actions)
+        env = Monitor(env)
         return env
 
     return _init
@@ -98,8 +110,8 @@ def main():
     # obs = venv.reset()
     # writer = SummaryWriter("./logs/dqn_apf_raw")
 
-    CHECKPOINT_DIR = './train/DQN_RAW/'
-    LOG_DIR = './logs/DQN_RAW/'
+    CHECKPOINT_DIR = './train/D3QN_test/'
+    LOG_DIR = './logs/D3QN_test/'
 
     # FIRST TIME TRAINING
     callback = TrainAndLoggingCallback(check_freq=5000, save_path=CHECKPOINT_DIR)
@@ -108,7 +120,8 @@ def main():
         features_extractor_kwargs=dict(features_dim=512),
     )
     model = DQN("CnnPolicy", venv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', tensorboard_log=LOG_DIR,
-                batch_size=64)
+                batch_size=128)
+    print(model.policy)
 
     # observations = torch.from_numpy(obs).cuda().float()
     # writer.add_graph(model.policy, observations)
@@ -118,8 +131,10 @@ def main():
     # callback = TrainAndLoggingCallback(check_freq=100000, save_path=CHECKPOINT_DIR, start_step=4000000)
     # model = PPO.load(MODEL_PATH, env, tensorboard_log=LOG_DIR)
 
-    model.learn(total_timesteps=int(100000), callback=callback)
-    # model.save('testingmodel')
+    model.learn(total_timesteps=int(5000000), callback=callback, progress_bar=True)
+    # model.learn(total_timesteps=int(10000), callback=callback)
+    model_path = os.path.join(CHECKPOINT_DIR, 'testingmodel2')
+    model.save(model_path)
 
 
 if __name__ == '__main__':
