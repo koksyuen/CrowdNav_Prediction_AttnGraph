@@ -216,7 +216,7 @@ class BehaviourCloning():
 
             # calculate target Q-values
             with torch.no_grad():
-                target_q_values, target_n_q_values = self.cal_target_q_values(s_1, s_n, r_arr, before_done, present_qn)
+                target_q_s_a, target_n_q_s_a = self.cal_target_q_values(s_1, s_n, r_arr, before_done, present_qn)
 
             # Get current Q-values estimates
             q_s = self.q_net(s_0)
@@ -230,14 +230,14 @@ class BehaviourCloning():
             '''
             l_margin = self.margin_fn * torch.ones_like(q_s, device=self.device)
             l_margin.scatter_(1, a.long().unsqueeze(-1), torch.zeros_like(q_s, device=self.device))
-            J_E = (torch.max(q_s + l_margin.detach(), dim=1)[0].unsqueeze(-1) - q_s_a).mean()
+            J_E = (torch.max(q_s + l_margin, dim=1)[0].unsqueeze(-1) - q_s_a).mean()
 
             '''
             Q learning loss
             '''
             # Compute Huber loss (less sensitive to outliers)
-            J_DQ = self.criterion(q_s_a, target_q_values.detach())
-            J_N = self.criterion(q_s_a, target_n_q_values.detach())
+            J_DQ = self.criterion(q_s_a, target_q_s_a.detach())
+            J_N = self.criterion(q_s_a, target_n_q_s_a.detach())
 
             '''
             Total loss
@@ -292,7 +292,7 @@ class BehaviourCloning():
                                                                    present_qn.to(self.device)
 
                 # calculate target Q-values
-                target_q_values, target_n_q_values = self.cal_target_q_values(s_1, s_n, r_arr, before_done, present_qn)
+                target_q_s_a, target_n_q_s_a = self.cal_target_q_values(s_1, s_n, r_arr, before_done, present_qn)
 
                 # Get current Q-values estimates
                 q_s = self.q_net(s_0)
@@ -312,8 +312,8 @@ class BehaviourCloning():
                 Q learning loss
                 '''
                 # Compute Huber loss (less sensitive to outliers)
-                J_DQ = self.criterion(q_s_a, target_q_values)
-                J_N = self.criterion(q_s_a, target_n_q_values)
+                J_DQ = self.criterion(q_s_a, target_q_s_a)
+                J_N = self.criterion(q_s_a, target_n_q_s_a)
 
                 '''
                 Total loss
@@ -448,7 +448,7 @@ def train_bc():
 
     expert_dataset = ExpertDataSet(np_data['expert_observations'], np_data['expert_actions'],
                                    np_data['expert_rewards'], np_data['expert_episodes'],
-                                   np_data['episode_record'])
+                                   np_data['episode_record'], dqfd_n_step=10)
     expert_dataset.discrete_actions(discrete_actions)
     print("expert_dataset: ", len(expert_dataset))
 
@@ -482,7 +482,10 @@ def train_bc():
                           seed=1000,
                           test_batch_size=16,
                           expert_dataset=expert_dataset,
-                          tensorboard_log=LOG_DIR)
+                          tensorboard_log=LOG_DIR,
+                          dqfd_n_step=10,
+                          gamma=0.99
+                          )
 
     bc.learn(epochs=20, save_interval=1, checkpoint_dir=CHECKPOINT_DIR,
              previous_epoch=0, target_update_batch=50)
