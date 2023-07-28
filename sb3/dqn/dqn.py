@@ -81,11 +81,11 @@ class DQN(OffPolicyAlgorithm):
         self.max_grad_norm = max_grad_norm
         # "epsilon" for the epsilon-greedy exploration
         self.exploration_rate = 0.0
+        self.double_dqn = double_dqn
         # Linear schedule will be defined in `_setup_model()`
         self.exploration_schedule: Schedule
         self.q_net: th.nn.Module
         self.q_net_target: th.nn.Module
-        self.double_dqn = double_dqn
 
         if _init_setup_model:
             self._setup_model()
