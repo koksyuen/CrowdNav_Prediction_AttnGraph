@@ -1,18 +1,12 @@
 import gym
 from gym.spaces import Discrete
 import numpy as np
-from crowd_sim.envs.crowd_sim_sgan import CrowdSimSgan
-from crowd_sim.envs.crowd_sim_no_pred import CrowdSimNoPred
-from crowd_sim.envs.crowd_sim_sgan_apf import CrowdSimSganApf
 from crowd_sim.envs.crowd_sim_raw import CrowdSimRaw
 from sb3.feature_extractor import Preprocessor, ApfFeaturesExtractor
-from torch.utils.tensorboard import SummaryWriter
-import torch
-import time
 import os
+import torch
 
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 # from stable_baselines3 import DQN
@@ -103,25 +97,31 @@ class TrainAndLoggingCallback(BaseCallback):
 
 def main():
     config = Config()
-    num_cpu = 12  # Number of processes to use
-    seed = 100
+    num_cpu = 20  # Number of processes to use
+    seed = 1
     venv = SubprocVecEnv([make_env(seed, i, config, num_cpu) for i in range(num_cpu)])
 
     # obs = venv.reset()
     # writer = SummaryWriter("./logs/dqn_apf_raw")
 
-    CHECKPOINT_DIR = './train/D3QN_test/'
-    LOG_DIR = './logs/D3QN_test/'
+    PRETRAIN_MODEL_PATH = './train/DQN_BC_APF_RAW/best_dict_15.pth'
+    policy_dict = torch.load(PRETRAIN_MODEL_PATH)
+    print(policy_dict)
+
+    CHECKPOINT_DIR = './train/D3QN_RAW_APF/'
+    LOG_DIR = './logs/D3QN_RAW_APF/'
 
     # FIRST TIME TRAINING
-    callback = TrainAndLoggingCallback(check_freq=5000, save_path=CHECKPOINT_DIR)
     policy_kwargs = dict(
         features_extractor_class=ApfFeaturesExtractor,
         features_extractor_kwargs=dict(features_dim=512),
     )
-    model = DQN("CnnPolicy", venv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', tensorboard_log=LOG_DIR,
-                batch_size=128)
+    model = DQN("CnnPolicy", venv, learning_rate=0.0001, policy_kwargs=policy_kwargs,
+                verbose=1, device='cuda', tensorboard_log=LOG_DIR,
+                batch_size=512)
     print(model.policy)
+    model.policy.q_net.load_state_dict(policy_dict)
+    model.policy.q_net_target.load_state_dict(policy_dict)
 
     # observations = torch.from_numpy(obs).cuda().float()
     # writer.add_graph(model.policy, observations)
@@ -131,9 +131,9 @@ def main():
     # callback = TrainAndLoggingCallback(check_freq=100000, save_path=CHECKPOINT_DIR, start_step=4000000)
     # model = PPO.load(MODEL_PATH, env, tensorboard_log=LOG_DIR)
 
-    model.learn(total_timesteps=int(5000000), callback=callback, progress_bar=True)
-    # model.learn(total_timesteps=int(10000), callback=callback)
-    model_path = os.path.join(CHECKPOINT_DIR, 'testingmodel2')
+    callback = TrainAndLoggingCallback(check_freq=int(1e5), save_path=CHECKPOINT_DIR)
+    model.learn(total_timesteps=int(1e6), callback=callback, progress_bar=True)
+    model_path = os.path.join(CHECKPOINT_DIR, 'best_model')
     model.save(model_path)
 
 

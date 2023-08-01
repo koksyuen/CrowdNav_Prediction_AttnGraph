@@ -9,32 +9,40 @@ from sb3.feature_extractor import Preprocessor, ApfFeaturesExtractor
 import time
 import os
 import matplotlib.pyplot as plt
+import torch
 
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3 import DQN, PPO, A2C
+# from stable_baselines3 import DQN, PPO, A2C
+from sb3.dqn.dqn import DQN
 
 from arguments import get_args
 from crowd_nav.configs.config import Config
 
-'''
-0: Vx=0, Vy=0
-1: Vx=1, Vy=0
-2: Vx=0, Vy=1
-3: Vx=-1, Vy=0
-4: Vx=0, Vy=-1
-5: Vx=1, Vy=1
-6: Vx=-1, Vy=-1
-7: Vx=1, Vy=-1
-8: Vx=-1, Vy=1
-'''
-discrete_actions = [np.array([0, 0]), np.array([1, 0]),
-                    np.array([0, 1]), np.array([-1, 0]),
-                    np.array([0, -1]), np.array([1, 1]),
-                    np.array([-1, -1]), np.array([1, -1]),
-                    np.array([-1, 1])]
+# '''
+# 0: Vx=0, Vy=0
+# 1: Vx=1, Vy=0
+# 2: Vx=0, Vy=1
+# 3: Vx=-1, Vy=0
+# 4: Vx=0, Vy=-1
+# 5: Vx=1, Vy=1
+# 6: Vx=-1, Vy=-1
+# 7: Vx=1, Vy=-1
+# 8: Vx=-1, Vy=1
+# '''
+# discrete_actions = [np.array([0, 0]), np.array([1, 0]),
+#                     np.array([0, 1]), np.array([-1, 0]),
+#                     np.array([0, -1]), np.array([1, 1]),
+#                     np.array([-1, -1]), np.array([1, -1]),
+#                     np.array([-1, 1])]
+
+U_A = [-1.0, -0.5, 0.0, 0.5, 1.0]
+u_a = np.array(U_A)
+Y, X = np.meshgrid(u_a, u_a)
+discrete_actions = np.stack((X, Y), axis=-1)
+discrete_actions = discrete_actions.reshape((-1, 2))
 
 
 class DiscreteActions(gym.ActionWrapper):
@@ -112,12 +120,12 @@ def make_discrete_env(seed, rank, env_config, envNum=1):
 
 
 def main():
-    # plt.figure(1, figsize=(7, 7))
-    # ax1 = plt.subplot()
-    # ax1.set_xlim(-10, 10)
-    # ax1.set_ylim(-10, 10)
-    # ax1.set_xlabel('x(m)', fontsize=16)
-    # ax1.set_ylabel('y(m)', fontsize=16)
+    plt.figure(1, figsize=(7, 7))
+    ax1 = plt.subplot()
+    ax1.set_xlim(-10, 10)
+    ax1.set_ylim(-10, 10)
+    ax1.set_xlabel('x(m)', fontsize=16)
+    ax1.set_ylabel('y(m)', fontsize=16)
 
     # plt.figure(2)
     # ax2 = plt.subplot()
@@ -128,23 +136,33 @@ def main():
 
     env = CrowdSimRaw()
     env.configure(config)
-    env.setup(seed=900000, num_of_env=1, ax=None)
+    env.setup(seed=1000, num_of_env=1, ax=ax1)
 
     denv = DiscreteActions(env, discrete_actions)
 
     # MODEL_PATH = './train/BC/best_model_50'
     # model = PPO.load(MODEL_PATH, env)
 
+    # PRETRAIN_MODEL_PATH = './train/DQN_BC_APF_RAW/best_dict_15.pth'
+    # policy_dict = torch.load(PRETRAIN_MODEL_PATH)
+    # print(policy_dict)
+
     policy_kwargs = dict(
         features_extractor_class=ApfFeaturesExtractor,
         features_extractor_kwargs=dict(features_dim=512),
     )
-    model1 = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
-    model2 = DQN("CnnPolicy", denv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=32)
+    # model1 = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
+    # model = DQN("CnnPolicy", denv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=32)
+    # model.policy.q_net.load_state_dict(policy_dict)
+    # model.policy.q_net_target.load_state_dict(policy_dict)
 
-    episodes = 5
+    MODEL_PATH = './train/D3QN_RAW_APF2/best_model3'
+    model = DQN.load(MODEL_PATH, denv)
+
+
+    episodes = 10
     for episode in range(1, episodes + 1):
-        obs = env.reset()
+        obs = denv.reset()
         done = False
         score = 0
         avg_time = 0
@@ -152,22 +170,22 @@ def main():
 
         while not done:
             # plt.figure(1)
-            # env.render()
+            env.render()
             # action = env.action_space.sample()
             # vx, vy = env.calculate_orca()
             # action = np.array([vx, vy])
-            # start_time = time.time()
-            action_rl = model2.predict(obs, deterministic=True)
-            print(action_rl[0])
-            # end_time = time.time()
+            start_time = time.time()
+            action_rl = model.predict(obs, deterministic=True)
+            # print(action_rl[0])
+            end_time = time.time()
             # print("action_shape".format(action_rl.shape))
             # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
             # obs, reward, done, info = env.step(action_rl)
-            obs, reward, done, info = env.step(action)
-            plt.figure(2)
-            plt.imshow(np.rot90(obs.reshape(obs.shape[1], obs.shape[2]), -1), cmap='gray')
-            plt.pause(0.01)
-            # avg_time += (end_time - start_time)
+            obs, reward, done, info = denv.step(action_rl[0])
+            # plt.figure(2)
+            # plt.imshow(np.rot90(obs.reshape(obs.shape[1], obs.shape[2]), -1), cmap='gray')
+            # plt.pause(0.01)
+            avg_time += (end_time - start_time)
             step += 1
             score += reward
         print('Episode:{} Score:{}'.format(episode, score))
