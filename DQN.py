@@ -37,6 +37,7 @@ u_a = np.array(U_A)
 Y, X = np.meshgrid(u_a, u_a)
 discrete_actions = np.stack((X, Y), axis=-1)
 discrete_actions = discrete_actions.reshape((-1, 2))
+print(discrete_actions)
 # print(len(discrete_actions))
 
 

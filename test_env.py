@@ -43,6 +43,7 @@ u_a = np.array(U_A)
 Y, X = np.meshgrid(u_a, u_a)
 discrete_actions = np.stack((X, Y), axis=-1)
 discrete_actions = discrete_actions.reshape((-1, 2))
+print(discrete_actions)
 
 
 class DiscreteActions(gym.ActionWrapper):
@@ -136,28 +137,26 @@ def main():
 
     env = CrowdSimRaw()
     env.configure(config)
-    env.setup(seed=1000, num_of_env=1, ax=ax1)
+    env.setup(seed=45000, num_of_env=1, ax=ax1)
 
     denv = DiscreteActions(env, discrete_actions)
-
-    # MODEL_PATH = './train/BC/best_model_50'
-    # model = PPO.load(MODEL_PATH, env)
-
-    # PRETRAIN_MODEL_PATH = './train/DQN_BC_APF_RAW/best_dict_15.pth'
-    # policy_dict = torch.load(PRETRAIN_MODEL_PATH)
-    # print(policy_dict)
 
     policy_kwargs = dict(
         features_extractor_class=ApfFeaturesExtractor,
         features_extractor_kwargs=dict(features_dim=512),
     )
-    # model1 = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=64)
-    # model = DQN("CnnPolicy", denv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=32)
-    # model.policy.q_net.load_state_dict(policy_dict)
-    # model.policy.q_net_target.load_state_dict(policy_dict)
 
-    MODEL_PATH = './train/D3QN_RAW_APF2/best_model3'
-    model = DQN.load(MODEL_PATH, denv)
+    #DQfN
+    PRETRAIN_MODEL_PATH = './train/DQN_BC_APF_RAW/best_dict_15.pth'
+    policy_dict = torch.load(PRETRAIN_MODEL_PATH)
+    print(policy_dict)
+    model = DQN("CnnPolicy", denv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=32)
+    model.policy.q_net.load_state_dict(policy_dict)
+    model.policy.q_net_target.load_state_dict(policy_dict)
+
+    # DQN
+    # MODEL_PATH = './train/D3QN_RAW_APF3/best_model'
+    # model = DQN.load(MODEL_PATH, denv)
 
 
     episodes = 10

@@ -171,6 +171,11 @@ class CrowdSimRaw(CrowdSim):
 
         danger_dists = []
         collision = False
+        episode_info = {'type': '',
+                        'goal': 0.0,
+                        'collision': 0.0,
+                        'discomfort': 0.0,
+                        'potential': 0.0}
 
         for i, human in enumerate(self.humans):
             dx = human.px - self.robot.px
@@ -193,15 +198,16 @@ class CrowdSimRaw(CrowdSim):
         if self.global_time >= self.time_limit - 1:  # reached termination state (time limit for one episode)
             reward = 0
             done = True
-            episode_info = Timeout()
         elif collision:  # termination state (collision)
             reward = self.collision_penalty
             done = True
-            episode_info = Collision()
+            episode_info['type'] = 'collision'
+            episode_info['collision'] = reward
         elif reaching_goal:  # termination state (reached goal)
             reward = self.success_reward
             done = True
-            episode_info = ReachGoal()
+            episode_info['type'] = 'goal'
+            episode_info['goal'] = reward
 
         elif dmin < self.discomfort_dist:
             # only penalize agent for getting too close if it's visible
@@ -210,16 +216,16 @@ class CrowdSimRaw(CrowdSim):
             # print(dmin)
             reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
-            episode_info = Danger(dmin)
+            episode_info['type'] = 'discomfort'
+            episode_info['discomfort'] = reward
 
         else:
             # potential reward
             potential_cur = np.linalg.norm(
                 np.array([self.robot.px, self.robot.py]) - np.array(self.robot.get_goal_position()))
             reward = 2 * (-abs(potential_cur) - self.potential)
-            episode_info = Potential(previous_potential=abs(self.potential),
-                                     current_potential=abs(potential_cur),
-                                     reward=reward)
+            episode_info['type'] = 'potential'
+            episode_info['potential'] = reward
             self.potential = -abs(potential_cur)
             done = False
 
@@ -612,7 +618,7 @@ class CrowdSimRaw(CrowdSim):
         #             artists.append(circle)
         #         sgan_i += 1
 
-        plt.pause(0.01)
+        plt.pause(0.1)
         for item in artists:
             item.remove()  # there should be a better way to do this. For example,
             # initially use add_artist and draw_artist later on

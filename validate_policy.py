@@ -152,7 +152,7 @@ def main():
             # print("action_shape".format(action_rl.shape))
             # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
             obs, reward, done, info = env.step(action_rl[0])
-            print(info)
+            print(info['info']['potential'])
             # obs, reward, done, info = env.step(action)
             # plt.figure(2)
             # plt.imshow(np.rot90(obs.reshape(obs.shape[0], obs.shape[1]), -1), cmap='gray')
