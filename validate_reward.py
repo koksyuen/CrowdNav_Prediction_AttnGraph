@@ -76,7 +76,7 @@ def main():
     policy_dict = torch.load(PRETRAIN_MODEL_PATH)
     print(policy_dict)
     model = DQN("CnnPolicy", denv, learning_rate=0.0001, policy_kwargs=policy_kwargs,
-                exploration_fraction=1.0, exploration_initial_eps=0.5, exploration_final_eps=0.5,
+                exploration_fraction=1.0, exploration_initial_eps=0.8, exploration_final_eps=0.8,
                 verbose=1, device='cuda', batch_size=512)
     model.policy.q_net.load_state_dict(policy_dict)
     model.policy.q_net_target.load_state_dict(policy_dict)
