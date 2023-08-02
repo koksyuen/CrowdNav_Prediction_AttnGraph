@@ -88,17 +88,20 @@ def main():
     num_interactions = 1000
     obs = denv.reset()
     potential_reward = []
+    discomfort_reward = []
 
     for i in tqdm(range(num_interactions)):
         action_rl = model.predict(obs, deterministic=False)
         obs, reward, done, info = denv.step(action_rl[0])
         if info['info']['type'] == 'potential':
             potential_reward.append(info['info']['potential'])
+        if info['info']['type'] == 'discomfort':
+            discomfort_reward.append(info['info']['discomfort'])
         if done:
             obs = env.reset()
     env.close()
 
-    np.save('reward_record.npy', np.array(potential_reward))
+    np.savez_compressed('reward_record.npz', discomfort_reward=discomfort_reward, potential_reward=potential_reward)
 
 
 if __name__ == '__main__':
