@@ -28,6 +28,7 @@ class Preprocessor(nn.Module):
         with torch.no_grad():
             """ initialisation """
             self.batch_size = None
+            self.trial = True
             # center of map
             center = map_size / 2
             # number of grid
@@ -76,22 +77,26 @@ class Preprocessor(nn.Module):
 
             """ initialisation based on observations """
             if self.batch_size != observations.shape[0]:
-                # seq of humans' index (for Social GAN)
-                seq_start_end = []
-                self.batch_size = observations.shape[0]
-                # print(observations.shape)
-                self.human_num = int(observations[0, -1, 1, 0])
-                for i in range(self.batch_size):
-                    start = i * self.human_num
-                    seq_start_end.append([start, start + self.human_num])
-                # seq_start_end: (batch_size, 2)
-                self.seq_start_end = torch.tensor(seq_start_end, device='cuda')
+                if self.trial:
+                    self.trial = False
+                    self.human_num = 0  # dummy
+                else:
+                    self.batch_size = observations.shape[0]
+                    # seq of humans' index (for Social GAN)
+                    seq_start_end = []
+                    self.human_num = int(observations[0, -1, 1, 0])
+                    for i in range(self.batch_size):
+                        start = i * self.human_num
+                        seq_start_end.append([start, start + self.human_num])
+                    # seq_start_end: (batch_size, 2)
+                    self.seq_start_end = torch.tensor(seq_start_end, device='cuda')
+                    print('human_num: {}'.format(self.human_num))
 
             """ data extraction """
             # goal: (batch_size, 2)
             goal = observations[:, -1, 0]
 
-            if self.human_num > 0:
+            if self.human_num > 0 and not self.trial:
                 # radius: (batch_size, human_num)
                 radius = observations[:, -2, :self.human_num, 1]
 
@@ -128,7 +133,7 @@ class Preprocessor(nn.Module):
             ug = 0.5 * KP * torch.hypot(torch.unsqueeze(self.pmap_x, dim=0) - goal[:, 0].reshape(goal.shape[0], 1, 1),
                                         torch.unsqueeze(self.pmap_y, dim=0) - goal[:, 1].reshape(goal.shape[0], 1, 1))
 
-            if self.human_num > 0:
+            if self.human_num > 0 and not self.trial:
                 """ obstacle repulsive force """
                 pmap_x_temp = self.pmap_x.reshape(1, self.pmap_x.shape[0], self.pmap_x.shape[1], 1, 1)
                 pmap_y_temp = self.pmap_y.reshape(1, self.pmap_y.shape[0], self.pmap_y.shape[1], 1, 1)
