@@ -12,8 +12,10 @@ from sgan.models import TrajectoryGenerator
 from sgan.utils import relative_to_abs, torch_abs_to_relative
 
 # Artificial Potential Field Parameters
-KP = 9.0  # attractive potential gain
-ETA = 1.0  # repulsive potential gain
+KP = 1.0  # attractive potential gain
+ETA = 4.0  # repulsive potential gain
+# KP = 50.0  # attractive potential gain
+# ETA = 100.0  # repulsive potential gain
 # decay rate with respect to time    0.9^(t-t0)
 DECAY = [1.0, 0.9, 0.81, 0.73, 0.66, 0.59, 0.53, 0.48]
 
@@ -78,80 +80,98 @@ class Preprocessor(nn.Module):
                 seq_start_end = []
                 self.batch_size = observations.shape[0]
                 # print(observations.shape)
-                human_num = observations.shape[2]
+                self.human_num = int(observations[0, -1, 1, 0])
                 for i in range(self.batch_size):
-                    start = i * human_num
-                    seq_start_end.append([start, start + human_num])
+                    start = i * self.human_num
+                    seq_start_end.append([start, start + self.human_num])
                 # seq_start_end: (batch_size, 2)
                 self.seq_start_end = torch.tensor(seq_start_end, device='cuda')
 
             """ data extraction """
-            # radius: (batch_size, human_num)
-            radius = observations[:, -2, :, 1]
-            # print(radius.shape)
-
             # goal: (batch_size, 2)
             goal = observations[:, -1, 0]
 
-            # obs_traj_stack: (obs_len, human_num * batch size, 2)
-            obs_traj = observations[:, :-2, :, :].permute(0, 2, 1, 3)
-            obs_traj_stack = obs_traj.reshape(obs_traj.shape[0] * obs_traj.shape[1],
-                                              obs_traj.shape[2], obs_traj.shape[3])
-            obs_traj_stack = obs_traj_stack.permute(1, 0, 2)
+            if self.human_num > 0:
+                # radius: (batch_size, human_num)
+                radius = observations[:, -2, :self.human_num, 1]
 
-            """ Social GAN: pedestrians' trajectories prediction """
-            # obs_traj_rel: (obs_len, human_num * batch size, 2)
-            obs_traj_rel = torch_abs_to_relative(obs_traj_stack)
+                # comfort_distance: (batch_size, human_num)
+                comfort_distance = observations[:, -2, :self.human_num, 0]
 
-            # pred_traj_rel: (pred_len, human_num * batch size, 2)
-            pred_traj_rel = self.traj_predictor(obs_traj_stack, obs_traj_rel, self.seq_start_end)
+                # obs_traj_stack: (obs_len, human_num * batch size, 2)
+                obs_traj = observations[:, :-2, :self.human_num, :].permute(0, 2, 1, 3)
+                obs_traj_stack = obs_traj.reshape(obs_traj.shape[0] * obs_traj.shape[1],
+                                                  obs_traj.shape[2], obs_traj.shape[3])
+                obs_traj_stack = obs_traj_stack.permute(1, 0, 2)
 
-            # pred_traj: (pred_len, human_num * batch size, 2)
-            pred_traj = relative_to_abs(rel_traj=pred_traj_rel, start_pos=obs_traj_stack[-1])
+                """ Social GAN: pedestrians' trajectories prediction """
+                # obs_traj_rel: (obs_len, human_num * batch size, 2)
+                obs_traj_rel = torch_abs_to_relative(obs_traj_stack)
 
-            # pred_traj_batch: (batch_size, map_height, map_width, pred_len, human_num, 2)
-            pred_traj = pred_traj.permute(1, 0, 2)
-            pred_traj_batch = pred_traj.reshape(self.batch_size,
-                                                int(pred_traj.shape[0] / self.batch_size),
-                                                pred_traj.shape[1], pred_traj.shape[2])
-            pred_traj_batch = pred_traj_batch.permute(0, 2, 1, 3)
-            pred_traj_batch = pred_traj_batch.reshape(pred_traj_batch.shape[0], 1, 1, pred_traj_batch.shape[1],
-                                                      pred_traj_batch.shape[2], pred_traj_batch.shape[3])
+                # pred_traj_rel: (pred_len, human_num * batch size, 2)
+                pred_traj_rel = self.traj_predictor(obs_traj_stack, obs_traj_rel, self.seq_start_end)
+
+                # pred_traj: (pred_len, human_num * batch size, 2)
+                pred_traj = relative_to_abs(rel_traj=pred_traj_rel, start_pos=obs_traj_stack[-1])
+
+                # pred_traj_batch: (batch_size, map_height, map_width, pred_len, human_num, 2)
+                pred_traj = pred_traj.permute(1, 0, 2)
+                pred_traj_batch = pred_traj.reshape(self.batch_size,
+                                                    int(pred_traj.shape[0] / self.batch_size),
+                                                    pred_traj.shape[1], pred_traj.shape[2])
+                pred_traj_batch = pred_traj_batch.permute(0, 2, 1, 3)
+                pred_traj_batch = pred_traj_batch.reshape(pred_traj_batch.shape[0], 1, 1, pred_traj_batch.shape[1],
+                                                          pred_traj_batch.shape[2], pred_traj_batch.shape[3])
 
             """ goal attractive force """
             # ug: (batch size, map_height, map_width)
             ug = 0.5 * KP * torch.hypot(torch.unsqueeze(self.pmap_x, dim=0) - goal[:, 0].reshape(goal.shape[0], 1, 1),
                                         torch.unsqueeze(self.pmap_y, dim=0) - goal[:, 1].reshape(goal.shape[0], 1, 1))
 
-            """ obstacle repulsive force """
+            if self.human_num > 0:
+                """ obstacle repulsive force """
+                pmap_x_temp = self.pmap_x.reshape(1, self.pmap_x.shape[0], self.pmap_x.shape[1], 1, 1)
+                pmap_y_temp = self.pmap_y.reshape(1, self.pmap_y.shape[0], self.pmap_y.shape[1], 1, 1)
+                dq_x = pmap_x_temp - pred_traj_batch[:, :, :, :, :, 0]
+                dq_y = pmap_y_temp - pred_traj_batch[:, :, :, :, :, 1]
 
-            pmap_x_temp = self.pmap_x.reshape(1, self.pmap_x.shape[0], self.pmap_x.shape[1], 1, 1)
-            pmap_y_temp = self.pmap_y.reshape(1, self.pmap_y.shape[0], self.pmap_y.shape[1], 1, 1)
-            dq_x = pmap_x_temp - pred_traj_batch[:, :, :, :, :, 0]
-            dq_y = pmap_y_temp - pred_traj_batch[:, :, :, :, :, 1]
+                # distance to obstacle, dq: (batch size, map_height, map_width, obs_len, human_num)
+                dq = torch.hypot(dq_x, dq_y)
+                # dq[dq <= 0.1] = 0.1  # minimum distance to obstacle
 
-            # distance to obstacle, dq: (batch size, map_height, map_width, obs_len, human_num)
-            dq = torch.hypot(dq_x, dq_y)
-            dq[dq <= 0.1] = 0.1  # minimum distance to obstacle
+                # radius: (batch size, map_height, map_width, obs_len, human_num)
+                radius = radius.reshape(radius.shape[0], 1, 1, 1, radius.shape[1])
+                comfort_distance = comfort_distance.reshape(comfort_distance.shape[0], 1, 1, 1, comfort_distance.shape[1])
 
-            # radius: (batch size, map_height, map_width, obs_len, human_num)
-            radius = radius.reshape(radius.shape[0], 1, 1, 1, radius.shape[1])
+                # obstacle repulsive force, uo: (batch size, map_height, map_width, obs_len, human_num)
+                # uo = 0.5 * ETA * (10000000.0 / dq - 1.0 / radius)
+                # uo = 0.5 * ETA * (1.0 / dq - 1.0 / radius) ** 2
+                # uo = 0.5 * ETA * (1.0 / (dq + radius)) ** 2
+                # uo = 0.5 * ETA * (-dq / radius + 1)
+                # uo = 0.5 * ETA * (- dq / radius + 1)
+                # uo_comfort_zone = 0.5 * ETA
+                # uo_human = ETA
 
-            # obstacle repulsive force, uo: (batch size, map_height, map_width, obs_len, human_num)
-            uo = 0.5 * ETA * (1.0 / dq - 1.0 / radius) ** 2
+                uo = torch.where(dq <= comfort_distance, 0.5 * ETA, 0.0)
+                uo = torch.where(dq <= radius, ETA, uo)
 
-            # uo: (batch size, map_height, map_width, human_num, obs_len)
-            uo = uo.permute(0, 1, 2, 4, 3)
-            uo = self.decay * uo
+                # uo: (batch size, map_height, map_width, human_num, obs_len)
+                uo = uo.permute(0, 1, 2, 4, 3)
+                uo = self.decay * uo
 
-            # uo: (batch size, map_height, map_width)
-            uo = torch.amax(uo, dim=(-2, -1))
+                # uo: (batch size, map_height, map_width)
+                uo = torch.amax(uo, dim=(-2, -1))
 
-            """ total potential force """
-            # artificial potential map: (batch size, map_height, map_width)
-            u_total = torch.add(ug, uo)
+                """ total potential force """
+                # mask = torch.where(uo <= 0.01 * ETA, 1.0, 0.0)
+                # ug = torch.mul(mask, ug)
+                # artificial potential map: (batch size, map_height, map_width)
+                u_total = torch.add(ug, uo)
+                # u_total = uo
+            else:
+                u_total = ug
 
-            """ normalization of artificial potential map """
+            """ normalization of artificial potential map (0 ~ 1) """
             # pmap_norm = (batch size, map_channel, map_height, map_width)
             u_min = torch.amin(u_total, dim=(-2, -1), keepdim=True)
             u_max = torch.amax(u_total, dim=(-2, -1), keepdim=True)
@@ -159,6 +179,7 @@ class Preprocessor(nn.Module):
             pmap_norm = torch.unsqueeze(pmap_norm, dim=1)
 
             return pmap_norm
+
 
 class ApfFeaturesExtractor(BaseFeaturesExtractor):
     """

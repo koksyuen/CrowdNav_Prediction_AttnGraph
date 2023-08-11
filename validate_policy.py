@@ -104,7 +104,7 @@ def main():
 
     env = CrowdSimRaw()
     env.configure(config)
-    env.setup(seed=5000, num_of_env=1, ax=ax1)
+    env.setup(seed=100, num_of_env=1, ax=ax1)
     print(env.observation_space)
     print(env.action_space)
 

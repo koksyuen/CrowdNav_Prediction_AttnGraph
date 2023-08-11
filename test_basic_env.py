@@ -1,10 +1,7 @@
 import gym
 from gym.spaces import Discrete
 import numpy as np
-from crowd_sim.envs.crowd_sim_sgan import CrowdSimSgan
-from crowd_sim.envs.crowd_sim_sgan_apf import CrowdSimSganApf
-from crowd_sim.envs.crowd_sim_no_pred import CrowdSimNoPred
-from crowd_sim.envs.crowd_sim_raw import CrowdSimRaw
+from crowd_sim.envs.crowd_sim_goal import CrowdSimBasic
 from sb3.feature_extractor import Preprocessor, ApfFeaturesExtractor
 import time
 import os
@@ -17,6 +14,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 # from stable_baselines3 import DQN, PPO, A2C
 from sb3.dqn.dqn import DQN
+from stable_baselines3 import PPO
 
 from arguments import get_args
 from crowd_nav.configs.config import Config
@@ -84,7 +82,7 @@ def make_env(seed, rank, env_config, envNum=1):
     """
 
     def _init():
-        env = CrowdSimRaw()
+        env = CrowdSimBasic()
         # use a seed for reproducibility
         # Important: use a different seed for each environment
         # otherwise they would generate the same experiences
@@ -138,67 +136,67 @@ def main():
     ax3.set_xlabel('step', fontsize=16)
     ax3.set_ylabel('reward', fontsize=16)
 
+    plt.figure(4)
+    ax3 = plt.subplot()
+    ax3.set_xlabel('step', fontsize=16)
+    ax3.set_ylabel('cummulative_reward', fontsize=16)
+
     config = Config()
 
-    env = CrowdSimRaw()
+    env = CrowdSimBasic()
     env.configure(config)
-    env.setup(seed=45000, num_of_env=1, ax=ax1)
+    env.setup(seed=0, num_of_env=1, ax=ax1)
 
     denv = DiscreteActions(env, discrete_actions)
-
-    policy_kwargs = dict(
-        features_extractor_class=ApfFeaturesExtractor,
-        features_extractor_kwargs=dict(features_dim=512),
-    )
-
-    #DQfN
-    # PRETRAIN_MODEL_PATH = './train/D3QN_BC/best_dict_30.pth'
-    # # PRETRAIN_MODEL_PATH = './train/D3QN_NEW/1/best_dict.pth'
-    # policy_dict = torch.load(PRETRAIN_MODEL_PATH)
-    # print(policy_dict)
-    # model = DQN("CnnPolicy", denv, policy_kwargs=policy_kwargs, verbose=1, device='cuda', batch_size=32)
-    # model.policy.q_net.load_state_dict(policy_dict)
-    # model.policy.q_net_target.load_state_dict(policy_dict)
-
-    # DQN
-    MODEL_PATH = './train/D3QN_NO_EMO/1/best_model.zip'
+    MODEL_PATH = './train/D3QN_GOAL/POT/best_model.zip'
     model = DQN.load(MODEL_PATH, denv)
-    # torch.save(model.q_net.state_dict(), './train/D3QN_NEW/1/best_dict.pth')
 
+    # MODEL_PATH = './train/PPO_GOAL/POT/E01/best_model_500000.zip'
+    # model = PPO.load(MODEL_PATH, env)
 
     episodes = 10
     for episode in range(1, episodes + 1):
+        # obs = env.reset()
         obs = denv.reset()
         done = False
         score = 0
         avg_time = 0
         step = 0
         rewards = []
+        cum_rewards = []
 
         while not done:
+            # print(obs)
             plt.figure(1)
-            env.render()
-            # action = env.action_space.sample()
+            denv.render()
+            # env.render()
+            # action = denv.action_space.sample()
             # vx, vy = env.calculate_orca()
             # action = np.array([vx, vy])
-            start_time = time.time()
+            # start_time = time.time()
             action_rl = model.predict(obs, deterministic=True)
             # print(action_rl[0])
-            end_time = time.time()
+            # end_time = time.time()
             # print("action_shape".format(action_rl.shape))
             # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
             # obs, reward, done, info = env.step(action_rl)
             obs, reward, done, info = denv.step(action_rl[0])
+            # obs, reward, done, info = env.step(action_rl[0])
             # plt.figure(2)
             # plt.imshow(np.rot90(obs.reshape(obs.shape[1], obs.shape[2]), -1), cmap='gray')
             # plt.pause(0.01)
-            avg_time += (end_time - start_time)
+            # avg_time += (end_time - start_time)
             step += 1
             score += reward
             rewards.append(reward)
+            cum_rewards.append(score)
+            # rewards.append(score)
         print('Episode:{} Score:{}'.format(episode, score))
         plt.figure(3)
         plt.plot(rewards)
+        plt.pause(0.01)
+        plt.figure(4)
+        plt.plot(cum_rewards)
         plt.pause(0.01)
         # print('average inference time ({} steps): {}s'.format(step, avg_time / step))
     env.close()

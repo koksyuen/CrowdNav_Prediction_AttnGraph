@@ -1,7 +1,7 @@
 import gym
 from gym.spaces import Discrete
 import numpy as np
-from crowd_sim.envs.crowd_sim_raw import CrowdSimRaw
+from crowd_sim.envs.crowd_sim_goal import CrowdSimBasic
 from sb3.feature_extractor import Preprocessor, ApfFeaturesExtractor
 import os
 import torch
@@ -9,8 +9,8 @@ import torch
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-# from stable_baselines3 import DQN
-from sb3.dqn.dqn import DQN
+from stable_baselines3 import DQN
+# from sb3.dqn.dqn import DQN
 
 from arguments import get_args
 from crowd_nav.configs.config import Config
@@ -38,7 +38,7 @@ Y, X = np.meshgrid(u_a, u_a)
 discrete_actions = np.stack((X, Y), axis=-1)
 discrete_actions = discrete_actions.reshape((-1, 2))
 # print(discrete_actions)
-# print(len(discrete_actions))
+print(len(discrete_actions))
 
 
 
@@ -63,7 +63,7 @@ def make_env(seed, rank, env_config, envNum=1):
     """
 
     def _init():
-        env = CrowdSimRaw()
+        env = CrowdSimBasic()
         # use a seed for reproducibility
         # Important: use a different seed for each environment
         # otherwise they would generate the same experiences
@@ -98,7 +98,7 @@ class TrainAndLoggingCallback(BaseCallback):
 
 def main():
     config = Config()
-    num_cpu = 20  # Number of processes to use
+    num_cpu = 12  # Number of processes to use
     seed = 1
     venv = SubprocVecEnv([make_env(seed, i, config, num_cpu) for i in range(num_cpu)])
 
@@ -109,18 +109,26 @@ def main():
     # policy_dict = torch.load(PRETRAIN_MODEL_PATH)
     # print(policy_dict)
 
-    CHECKPOINT_DIR = './train/D3QN_RAW_APF/'
-    LOG_DIR = './logs/D3QN_RAW_APF/'
+    CHECKPOINT_DIR = './train/D3QN_GOAL/POT/DQN_GOAL100/'
+    LOG_DIR = './logs/D3QN_GOAL/POT/DQN_GOAL100/'
 
     # FIRST TIME TRAINING
-    policy_kwargs = dict(
-        features_extractor_class=ApfFeaturesExtractor,
-        features_extractor_kwargs=dict(features_dim=512),
-    )
-    model = DQN("CnnPolicy", venv, learning_rate=0.0001, policy_kwargs=policy_kwargs,
+    # policy_kwargs = dict(
+    #     features_extractor_class=ApfFeaturesExtractor,
+    #     features_extractor_kwargs=dict(features_dim=512),
+    # )
+    # MODEL_PATH = './train/D3QN_GOAL/TIME_PN/best_model.zip'
+    # old_model = DQN.load(MODEL_PATH, venv)
+    # policy_dict = old_model.q_net.state_dict()
+
+    model = DQN("MlpPolicy", venv, learning_rate=0.001,
                 verbose=1, device='cuda', tensorboard_log=LOG_DIR,
-                batch_size=512)
-    print(model.policy)
+                batch_size=65536,
+                exploration_fraction=2.0,
+                exploration_initial_eps=1.0,
+                exploration_final_eps=0.05
+                )
+    # print(model.policy)
     # model.policy.q_net.load_state_dict(policy_dict)
     # model.policy.q_net_target.load_state_dict(policy_dict)
 
@@ -132,8 +140,8 @@ def main():
     # callback = TrainAndLoggingCallback(check_freq=100000, save_path=CHECKPOINT_DIR, start_step=4000000)
     # model = PPO.load(MODEL_PATH, env, tensorboard_log=LOG_DIR)
 
-    callback = TrainAndLoggingCallback(check_freq=int(1e5), save_path=CHECKPOINT_DIR)
-    model.learn(total_timesteps=int(1e6), callback=callback, progress_bar=True)
+    callback = TrainAndLoggingCallback(check_freq=int(5e4), save_path=CHECKPOINT_DIR)
+    model.learn(total_timesteps=int(3e6), callback=callback, progress_bar=True)
     model_path = os.path.join(CHECKPOINT_DIR, 'best_model')
     model.save(model_path)
 

@@ -21,7 +21,7 @@ from crowd_sim.envs.utils.state import JointState
 import sys
 
 
-class CrowdSimRaw(CrowdSim):
+class CrowdSimCL(CrowdSim):
     """
         Added Social GAN for pedestrians' trajectory prediction
     """
@@ -69,7 +69,7 @@ class CrowdSimRaw(CrowdSim):
 
         # width = int(round((self.local_map_size / self.map_resolution)))
         self.observation_space = Box(low=-10 * self.circle_radius, high=10 * self.circle_radius,
-                                     shape=(self.obs_len + 2, self.human_num, 2),
+                                     shape=(self.obs_len + 2, self.human_num_range, 2),
                                      dtype=np.float32)
         self.action_space = Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
@@ -246,7 +246,6 @@ class CrowdSimRaw(CrowdSim):
 
         return reward, done, episode_info
 
-
     def generate_ob(self, reset):
         """
         Compute the observation
@@ -258,17 +257,16 @@ class CrowdSimRaw(CrowdSim):
         """
 
         if reset:
-            comfort_distance = []
+            comfort_distance = np.zeros((self.human_num_range, 1), dtype=np.float32)
             for human_id in range(self.human_num):
-                comfort_distance.append(self.emotion_comfort_distance[self.humans_emotion[human_id]])
-            comfort_distance = np.array(comfort_distance)
-            human_radius = np.array(self.humans_radius)
+                comfort_distance[human_id, 0] = self.emotion_comfort_distance[self.humans_emotion[human_id]]
 
+            human_radius = np.array(self.humans_radius)
             radii = self.robot.radius + human_radius
+            radii = np.concatenate((radii, np.zeros((self.human_num_range - self.human_num))), axis=0)
             radii = radii.reshape(radii.shape[0], 1)
 
-            comfort_radii = self.robot.radius + human_radius + comfort_distance
-            comfort_radii = comfort_radii.reshape(comfort_radii.shape[0], 1)
+            comfort_radii = radii + comfort_distance
 
             # Human Extra Information
             self.human_extra_info = np.concatenate((comfort_radii, radii), axis=1)
@@ -282,6 +280,9 @@ class CrowdSimRaw(CrowdSim):
 
         # Human Past Trajectory (local_frame)
         local_human_past_traj = self.global_to_local(self.human_states_record)
+        dummy_traj = np.zeros((local_human_past_traj.shape[0], self.human_num_range - self.human_num,
+                               local_human_past_traj.shape[2]), dtype=np.float32)
+        local_human_past_traj = np.concatenate((local_human_past_traj, dummy_traj), axis=1)
 
         ### Calculates goal coordinate in local frame
         gx, gy = self.calculate_local_goal()
@@ -292,9 +293,10 @@ class CrowdSimRaw(CrowdSim):
         # print("obs1: {}".format(obs.shape))
 
         ### add gx, gy and num_visible_humans
-        global_info = np.zeros((1, self.human_num, 2), dtype=np.float32)
-        global_info[0,0,0] = gx
-        global_info[0,0,1] = gy
+        global_info = np.zeros((1, self.human_num_range, 2), dtype=np.float32)
+        global_info[0, 0, 0] = gx
+        global_info[0, 0, 1] = gy
+        global_info[0, 1, 0] = self.human_num
         obs = np.concatenate((obs, global_info), axis=0)
 
         return obs
@@ -338,7 +340,6 @@ class CrowdSimRaw(CrowdSim):
         local_goal = np.dot(T_r_w, np.hstack((global_goal, 1)))
 
         return local_goal[0], local_goal[1]
-
 
     def global_to_local(self, traj_global):
         """
@@ -398,7 +399,6 @@ class CrowdSimRaw(CrowdSim):
             humanS = np.array(self.humans[i].get_observable_state_list())
             self.last_human_states[i, :] = humanS
 
-
     def record_humans_emotion(self):
         for i in range(self.human_num):
             self.humans_emotion.append(self.humans[i].emotion)
@@ -406,7 +406,6 @@ class CrowdSimRaw(CrowdSim):
     def record_humans_radius(self):
         for i in range(self.human_num):
             self.humans_radius.append(self.humans[i].radius)
-
 
     def rescale_action(self, normalized_action):
         """
@@ -418,11 +417,10 @@ class CrowdSimRaw(CrowdSim):
             vx = normalized_action.vx * self.robot.v_pref
             vy = normalized_action.vy * self.robot.v_pref
             return ActionXY(vx, vy)
-        else:   # unicycle
+        else:  # unicycle
             vx = normalized_action.v * self.robot.vx_max
             dtheta = normalized_action.r * self.robot.dtheta_max
             return ActionRot(vx, dtheta)
-
 
     def step(self, raw_action, update=True):
         """
@@ -432,10 +430,10 @@ class CrowdSimRaw(CrowdSim):
         # different action format
         # rescale action
         if self.robot.kinematics == 'holonomic':
-            normalized_action = ActionXY(raw_action[0], raw_action[1])   # vx, vy
+            normalized_action = ActionXY(raw_action[0], raw_action[1])  # vx, vy
             action = self.rescale_action(normalized_action)
-        else:   # unicycle
-            normalized_action = ActionRot(raw_action[0], raw_action[1])   # v, r
+        else:  # unicycle
+            normalized_action = ActionRot(raw_action[0], raw_action[1])  # v, r
             action = self.rescale_action(normalized_action)
 
         # humans perform action first

@@ -21,7 +21,7 @@ from crowd_sim.envs.utils.state import JointState
 import sys
 
 
-class CrowdSimRaw(CrowdSim):
+class CrowdSimBasic(CrowdSim):
     """
         Added Social GAN for pedestrians' trajectory prediction
     """
@@ -69,7 +69,7 @@ class CrowdSimRaw(CrowdSim):
 
         # width = int(round((self.local_map_size / self.map_resolution)))
         self.observation_space = Box(low=-10 * self.circle_radius, high=10 * self.circle_radius,
-                                     shape=(self.obs_len + 2, self.human_num, 2),
+                                     shape=(2,),
                                      dtype=np.float32)
         self.action_space = Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
@@ -218,7 +218,9 @@ class CrowdSimRaw(CrowdSim):
             done = False
             episode_info['type'] = 'discomfort'
             episode_info['discomfort'] = reward
-
+        # else:
+        #     done = False
+        #     reward = -0.1
         else:
             # potential reward
             potential_cur = np.linalg.norm(
@@ -257,45 +259,36 @@ class CrowdSimRaw(CrowdSim):
                 goal coordinates: [-1, 0, :]
         """
 
-        if reset:
-            comfort_distance = []
-            for human_id in range(self.human_num):
-                comfort_distance.append(self.emotion_comfort_distance[self.humans_emotion[human_id]])
-            comfort_distance = np.array(comfort_distance)
-            human_radius = np.array(self.humans_radius)
-
-            radii = self.robot.radius + human_radius
-            radii = radii.reshape(radii.shape[0], 1)
-
-            comfort_radii = self.robot.radius + human_radius + comfort_distance
-            comfort_radii = comfort_radii.reshape(comfort_radii.shape[0], 1)
-
-            # Human Extra Information
-            self.human_extra_info = np.concatenate((comfort_radii, radii), axis=1)
-            self.human_extra_info = self.human_extra_info.reshape(1, self.human_extra_info.shape[0],
-                                                                  self.human_extra_info.shape[1])
-            # print("human extra info: {}".format(human_extra_info.shape))
-
-        self.update_last_human_states(reset=reset)
-
-        self.update_human_states_record(reset=reset)
-
-        # Human Past Trajectory (local_frame)
-        local_human_past_traj = self.global_to_local(self.human_states_record)
+        # if reset:
+        #     comfort_distance = []
+        #     for human_id in range(self.human_num):
+        #         comfort_distance.append(self.emotion_comfort_distance[self.humans_emotion[human_id]])
+        #     comfort_distance = np.array(comfort_distance)
+        #     human_radius = np.array(self.humans_radius)
+        #
+        #     radii = self.robot.radius + human_radius
+        #     radii = radii.reshape(radii.shape[0], 1)
+        #
+        #     comfort_radii = self.robot.radius + human_radius + comfort_distance
+        #     comfort_radii = comfort_radii.reshape(comfort_radii.shape[0], 1)
+        #
+        #     # Human Extra Information
+        #     self.human_extra_info = np.concatenate((comfort_radii, radii), axis=1)
+        #     self.human_extra_info = self.human_extra_info.reshape(1, self.human_extra_info.shape[0],
+        #                                                           self.human_extra_info.shape[1])
+        #     # print("human extra info: {}".format(human_extra_info.shape))
+        #
+        # self.update_last_human_states(reset=reset)
+        #
+        # self.update_human_states_record(reset=reset)
+        #
+        # # Human Past Trajectory (local_frame)
+        # local_human_past_traj = self.global_to_local(self.human_states_record)
 
         ### Calculates goal coordinate in local frame
         gx, gy = self.calculate_local_goal()
 
-        # print("traj: {}".format(local_relative_human_past_traj.shape))
-        ### add radius and human visibility
-        obs = np.concatenate((local_human_past_traj, self.human_extra_info), axis=0)
-        # print("obs1: {}".format(obs.shape))
-
-        ### add gx, gy and num_visible_humans
-        global_info = np.zeros((1, self.human_num, 2), dtype=np.float32)
-        global_info[0,0,0] = gx
-        global_info[0,0,1] = gy
-        obs = np.concatenate((obs, global_info), axis=0)
+        obs = np.array([gx, gy])
 
         return obs
 

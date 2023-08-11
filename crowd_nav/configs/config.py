@@ -15,7 +15,7 @@ class Config(object):
 
     # general configs for OpenAI gym env
     env = BaseConfig()
-    env.time_limit = 50 # unit: second
+    env.time_limit = 25 # unit: second
     env.time_step = 0.25 # second per frame
     env.val_size = 100
     env.test_size = 500
@@ -39,9 +39,10 @@ class Config(object):
     sim = BaseConfig()
     sim.circle_radius = 6 * np.sqrt(2)
     sim.arena_size = 6
-    sim.human_num = 10
+    # sim.human_num = 10
+    sim.human_num = 0
     # actual human num in each timestep, in [human_num-human_num_range, human_num+human_num_range]
-    sim.human_num_range = 0
+    sim.human_num_range = 10
     sim.predict_steps = 5
     # 'const_vel': constant velocity model,
     # 'truth': ground truth future traj (with info in robot's fov)

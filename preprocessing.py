@@ -1,4 +1,4 @@
-from crowd_sim.envs.crowd_sim_raw import CrowdSimRaw
+from crowd_sim.envs.crowd_sim_cl import CrowdSimCL
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from sb3.feature_extractor import Preprocessor
 import gym
@@ -37,7 +37,7 @@ def make_env(seed, rank, env_config, envNum=1):
     """
 
     def _init():
-        env = CrowdSimRaw()
+        env = CrowdSimCL()
         # use a seed for reproducibility
         # Important: use a different seed for each environment
         # otherwise they would generate the same experiences
@@ -50,10 +50,10 @@ def make_env(seed, rank, env_config, envNum=1):
 
 def main():
     config = Config()
-    writer = SummaryWriter("./logs/apf")
+    writer = SummaryWriter("./logs/apf/5ppl")
 
     num_cpu = 8  # Number of processes to use
-    seed = 100
+    seed = 1000
     apf = Preprocessor()
 
     venv = SubprocVecEnv([make_env(seed, i, config, num_cpu) for i in range(num_cpu)])
@@ -61,17 +61,23 @@ def main():
     episodes = 1
     for episode in range(1, episodes + 1):
         obs = venv.reset()
-        done = False
         score = 0
         avg_time = 0
+        avg_inf_time = 0
         step = 0
         dones = np.ones(venv.num_envs, dtype=bool)
 
-        for i in range(30):
+        for i in range(100):
             observations = torch.from_numpy(obs).cuda().float()
+            start_inf_time = time.time()
             pmaps = apf(observations)
+            end_inf_time = time.time()
+            avg_inf_time += (end_inf_time - start_inf_time)
             writer.add_images("pmap", img_tensor=pmaps, global_step=step, dataformats='NCHW')
-            actions = venv.env_method("calculate_orca")
+            # actions = venv.env_method("calculate_orca")
+            actions = []
+            for i in range(num_cpu):
+                actions.append(venv.action_space.sample())
             acts = np.stack(actions, axis=0)
             start_time = time.time()
             obs, rewards, dones, infos = venv.step(acts)
@@ -81,6 +87,7 @@ def main():
             # score += reward
         # print('Episode:{} Score:{}'.format(episode, score))
         print('average step time ({} steps): {}s'.format(step, avg_time / step))
+        print('average inference time ({} steps): {}s'.format(step, avg_inf_time / step))
     venv.close()
 
 # def main():
