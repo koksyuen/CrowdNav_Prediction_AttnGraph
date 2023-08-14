@@ -15,7 +15,7 @@ class Config(object):
 
     # general configs for OpenAI gym env
     env = BaseConfig()
-    env.time_limit = 25 # unit: second
+    env.time_limit = 50 # unit: second
     env.time_step = 0.25 # second per frame
     env.val_size = 100
     env.test_size = 500
@@ -40,9 +40,9 @@ class Config(object):
     sim.circle_radius = 6 * np.sqrt(2)
     sim.arena_size = 6
     # sim.human_num = 10
-    sim.human_num = 0
+    sim.human_num = 15
     # actual human num in each timestep, in [human_num-human_num_range, human_num+human_num_range]
-    sim.human_num_range = 10
+    sim.human_num_range = 15
     sim.predict_steps = 5
     # 'const_vel': constant velocity model,
     # 'truth': ground truth future traj (with info in robot's fov)
@@ -74,6 +74,11 @@ class Config(object):
     humans.sensor = "coordinates"
     # FOV = this values * PI
     humans.FOV = 2.
+
+    # a human may change its emotion midway through episode
+    # if randomize human emotions, set to True, else set to False
+    humans.random_emotion_changing = True
+    humans.emotion_change_chance = 0.5
 
     # a human may change its goal before it reaches its old goal
     # if randomize human behaviors, set to True, else set to False
@@ -164,6 +169,10 @@ class Config(object):
     sgan.emotions = {'happy': 0.3312,
                     'neutral': 0.2668,
                     'angry': 0.2193}
+
+    # sgan.emotions = {'happy': 0.2668,
+    #                 'neutral': 0.2668,
+    #                 'angry': 0.2668}
 
     # config for sim2real
     sim2real = BaseConfig()

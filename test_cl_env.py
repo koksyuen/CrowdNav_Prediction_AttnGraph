@@ -19,104 +19,6 @@ from stable_baselines3 import PPO
 from arguments import get_args
 from crowd_nav.configs.config import Config
 
-# '''
-# 0: Vx=0, Vy=0
-# 1: Vx=1, Vy=0
-# 2: Vx=0, Vy=1
-# 3: Vx=-1, Vy=0
-# 4: Vx=0, Vy=-1
-# 5: Vx=1, Vy=1
-# 6: Vx=-1, Vy=-1
-# 7: Vx=1, Vy=-1
-# 8: Vx=-1, Vy=1
-# '''
-# discrete_actions = [np.array([0, 0]), np.array([1, 0]),
-#                     np.array([0, 1]), np.array([-1, 0]),
-#                     np.array([0, -1]), np.array([1, 1]),
-#                     np.array([-1, -1]), np.array([1, -1]),
-#                     np.array([-1, 1])]
-
-U_A = [-1.0, -0.5, 0.0, 0.5, 1.0]
-u_a = np.array(U_A)
-Y, X = np.meshgrid(u_a, u_a)
-discrete_actions = np.stack((X, Y), axis=-1)
-discrete_actions = discrete_actions.reshape((-1, 2))
-print(discrete_actions)
-
-
-class DiscreteActions(gym.ActionWrapper):
-    def __init__(self, env, disc_to_cont):
-        super().__init__(env)
-        self.disc_to_cont = disc_to_cont
-        self.action_space = Discrete(len(disc_to_cont))
-
-    def action(self, act):
-        return self.disc_to_cont[act]
-
-
-class TrainAndLoggingCallback(BaseCallback):
-
-    def __init__(self, check_freq, save_path, verbose=1):
-        super(TrainAndLoggingCallback, self).__init__(verbose)
-        self.check_freq = check_freq
-        self.save_path = save_path
-
-    def _init_callback(self):
-        if self.save_path is not None:
-            os.makedirs(self.save_path, exist_ok=True)
-
-    def _on_step(self):
-        if self.n_calls % self.check_freq == 0:
-            model_path = os.path.join(self.save_path, 'best_model_{}'.format(self.n_calls))
-            self.model.save(model_path)
-
-        return True
-
-def make_env(seed, rank, env_config, envNum=1):
-    """
-    Utility function for multiprocessed env.
-
-    :param env_id: (str) the environment ID
-    :param seed: (int) the inital seed for RNG
-    :param rank: (int) index of the subprocess
-    """
-
-    def _init():
-        env = CrowdSimBasic()
-        # use a seed for reproducibility
-        # Important: use a different seed for each environment
-        # otherwise they would generate the same experiences
-        env.configure(env_config)
-        env.seed(seed + rank)
-        env.setup(seed=seed + rank, num_of_env=envNum)
-        env = Monitor(env)
-        return env
-
-    return _init
-
-def make_discrete_env(seed, rank, env_config, envNum=1):
-    """
-    Utility function for multiprocessed env.
-
-    :param env_id: (str) the environment ID
-    :param seed: (int) the inital seed for RNG
-    :param rank: (int) index of the subprocess
-    """
-
-    def _init():
-        env = CrowdSimRaw()
-        # use a seed for reproducibility
-        # Important: use a different seed for each environment
-        # otherwise they would generate the same experiences
-        env.configure(env_config)
-        env.seed(seed + rank)
-        env.setup(seed=seed + rank, num_of_env=envNum)
-        env = DiscreteActions(env, discrete_actions)
-        env = Monitor(env)
-        return env
-
-    return _init
-
 
 def main():
     plt.figure(1, figsize=(7, 7))
@@ -137,22 +39,38 @@ def main():
     ax3.set_ylabel('reward', fontsize=16)
 
     plt.figure(4)
-    ax3 = plt.subplot()
-    ax3.set_xlabel('step', fontsize=16)
-    ax3.set_ylabel('cummulative_reward', fontsize=16)
+    ax4 = plt.subplot()
+    ax4.set_xlabel('step', fontsize=16)
+    ax4.set_ylabel('cummulative_reward', fontsize=16)
+
+    plt.figure(5)
+    ax5 = plt.subplot()
+    ax5.set_xlabel('step', fontsize=16)
+    ax5.set_ylabel('comfort distance', fontsize=16)
 
     config = Config()
+    human_num = config.sim.human_num
 
     env = CrowdSimCL()
     env.configure(config)
-    env.setup(seed=0, num_of_env=1, ax=ax1)
+    env.setup(seed=90000, num_of_env=1, ax=ax1)
 
     # denv = DiscreteActions(env, discrete_actions)
     # MODEL_PATH = './train/D3QN_GOAL/POT/best_model.zip'
     # model = DQN.load(MODEL_PATH, denv)
 
-    # MODEL_PATH = './train/PPO_GOAL/POT/E01/best_model_500000.zip'
-    # model = PPO.load(MODEL_PATH, env)
+    MODEL_PATH = './train/PPO_NEW_APF/H10/E001_L0003/best_model.zip'
+    old_model = PPO.load(MODEL_PATH)
+    policy_dict = old_model.policy.state_dict()
+
+    # FIRST TIME TRAINING
+    policy_kwargs = dict(
+        features_extractor_class=ApfFeaturesExtractor,
+        features_extractor_kwargs=dict(features_dim=512),
+    )
+    model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, learning_rate=0.001,
+                device='cuda', batch_size=64, ent_coef=0.01)
+    model.policy.load_state_dict(policy_dict)
 
     episodes = 10
     for episode in range(1, episodes + 1):
@@ -163,6 +81,8 @@ def main():
         step = 0
         rewards = []
         cum_rewards = []
+        comfort_distances = obs[-2, :human_num, 0]
+        comfort_distances = comfort_distances.reshape(comfort_distances.shape[0], 1)
 
         while not done:
             # print(obs)
@@ -179,12 +99,17 @@ def main():
             # print("action_shape".format(action_rl.shape))
             # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
             # obs, reward, done, info = env.step(action_rl)
-            obs, reward, done, info = denv.step(action_rl[0])
+            obs, reward, done, info = env.step(action_rl[0])
+            x = obs[-2, :human_num, 0]
+            x = x.reshape(x.shape[0], 1)
+            comfort_distances = np.concatenate((comfort_distances, x), axis=1)
             # obs, reward, done, info = env.step(action_rl[0])
             # plt.figure(2)
             # plt.imshow(np.rot90(obs.reshape(obs.shape[1], obs.shape[2]), -1), cmap='gray')
             # plt.pause(0.01)
             # avg_time += (end_time - start_time)
+            if info['type'] == 'discomfort':
+                print('discomfort discount: {}'.format(info['discomfort']))
             step += 1
             score += reward
             rewards.append(reward)
@@ -196,6 +121,12 @@ def main():
         plt.pause(0.01)
         plt.figure(4)
         plt.plot(cum_rewards)
+        plt.pause(0.01)
+        plt.figure(5)
+        plt.clf()
+        for i in range(human_num):
+            plt.plot(comfort_distances[i], label='Human {}'.format(i + 1))
+        plt.legend()
         plt.pause(0.01)
         # print('average inference time ({} steps): {}s'.format(step, avg_time / step))
     env.close()

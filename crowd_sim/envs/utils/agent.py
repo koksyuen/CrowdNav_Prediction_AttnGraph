@@ -51,8 +51,8 @@ class Agent(object):
         """
         self.v_pref = np.random.uniform(0.5, 1.5)
         self.radius = np.random.uniform(0.3, 0.5)
-        # self.emotion = np.random.choice(list(self.emotions.keys()))
-        self.emotion = 'neutral'
+        self.emotion = np.random.choice(list(self.emotions.keys()))
+        # self.emotion = 'neutral'
 
     def set(self, px, py, gx, gy, vx, vy, theta, radius=None, v_pref=None):
         self.px = px

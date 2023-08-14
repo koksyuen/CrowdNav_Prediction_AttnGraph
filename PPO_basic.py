@@ -66,7 +66,7 @@ def main():
     CHECKPOINT_DIR = './train/PPO_GOAL/POT/E1/'
     LOG_DIR = './logs/PPO_GOAL/POT/E1/'
 
-    model = PPO("MlpPolicy", venv, verbose=1, learning_rate=0.001,
+    model = PPO("MlpPolicy", venv, verbose=1, learning_rate=0.0003,
                 device='cuda', tensorboard_log=LOG_DIR,
                 batch_size=24576, ent_coef=0.1)
 

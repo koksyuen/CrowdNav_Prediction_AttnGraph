@@ -68,8 +68,8 @@ def main():
     # policy_dict = torch.load(PRETRAIN_MODEL_PATH)
     # print(policy_dict)
 
-    CHECKPOINT_DIR = './train/PPO_NEW_APF/E01/'
-    LOG_DIR = './logs/PPO_NEW_APF/E01/'
+    CHECKPOINT_DIR = './train/PPO_NEW_APF/test/'
+    LOG_DIR = './logs/PPO_NEW_APF/test/'
 
     # FIRST TIME TRAINING
     callback = TrainAndLoggingCallback(check_freq=int(1e5), save_path=CHECKPOINT_DIR)

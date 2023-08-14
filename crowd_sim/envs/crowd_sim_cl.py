@@ -43,6 +43,11 @@ class CrowdSimCL(CrowdSim):
         # database of comfort distance boundary based on facial expression (emotion)
         self.emotion_comfort_distance = config.sgan.emotions
 
+        # configure randomized emotion changing of humans midway through episode
+        self.random_emotion_changing = config.humans.random_emotion_changing
+        if self.random_emotion_changing:
+            self.emotion_change_chance = config.humans.emotion_change_chance
+
         self.obs_len = config.sgan.obs_len
         # self.pred_len = config.sgan.pred_len
         # self.sgan_model = config.sgan.model_path
@@ -136,7 +141,6 @@ class CrowdSimCL(CrowdSim):
         """ Initialisation """
 
         self.humans = []  # remove all humans at the beginning of an episode
-        self.humans_emotion = []
         self.humans_radius = []
         self.global_time = 0
         self.step_counter = 0
@@ -166,11 +170,10 @@ class CrowdSimCL(CrowdSim):
 
     # calculate the reward at current timestep R(s, a)
     def calc_reward(self, action):
-        # collision detection
-        dmin = float('inf')  # for discomfort distance penalty
 
-        danger_dists = []
         collision = False
+        discomfort = False
+        intruded_distances = []
         episode_info = {'type': '',
                         'goal': 0.0,
                         'collision': 0.0,
@@ -182,14 +185,12 @@ class CrowdSimCL(CrowdSim):
             dy = human.py - self.robot.py
             closest_dist = (dx ** 2 + dy ** 2) ** (1 / 2) - human.radius - self.robot.radius
 
-            if closest_dist < self.discomfort_dist:
-                danger_dists.append(closest_dist)
+            if closest_dist < self.emotion_comfort_distance[human.emotion]:
+                discomfort = True
+                intruded_distances.append(closest_dist - self.emotion_comfort_distance[human.emotion])
             if closest_dist < 0:
                 collision = True
-                # logging.debug("Collision: distance between robot and p{} is {:.2E}".format(i, closest_dist))
                 break
-            elif closest_dist < dmin:
-                dmin = closest_dist
 
         # check if reached the goal
         reaching_goal = norm(
@@ -198,23 +199,24 @@ class CrowdSimCL(CrowdSim):
         if self.global_time >= self.time_limit - 1:  # reached termination state (time limit for one episode)
             reward = 0
             done = True
+
         elif collision:  # termination state (collision)
             reward = self.collision_penalty
             done = True
             episode_info['type'] = 'collision'
             episode_info['collision'] = reward
+
         elif reaching_goal:  # termination state (reached goal)
             reward = self.success_reward
             done = True
             episode_info['type'] = 'goal'
             episode_info['goal'] = reward
 
-        elif dmin < self.discomfort_dist:
-            # only penalize agent for getting too close if it's visible
+        elif discomfort:
             # only take one pedestrian (minimum distance) into account
             # adjust the reward based on FPS
-            # print(dmin)
-            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            intruded_distance = min(intruded_distances)
+            reward = intruded_distance * self.discomfort_penalty_factor * self.time_step
             done = False
             episode_info['type'] = 'discomfort'
             episode_info['discomfort'] = reward
@@ -224,10 +226,10 @@ class CrowdSimCL(CrowdSim):
             potential_cur = np.linalg.norm(
                 np.array([self.robot.px, self.robot.py]) - np.array(self.robot.get_goal_position()))
             reward = 2 * (-abs(potential_cur) - self.potential)
-            episode_info['type'] = 'potential'
-            episode_info['potential'] = reward
             self.potential = -abs(potential_cur)
             done = False
+            episode_info['type'] = 'potential'
+            episode_info['potential'] = reward
 
         # if the robot is near collision/arrival, it should be able to turn a large angle
         if self.robot.kinematics == 'unicycle':
@@ -256,23 +258,12 @@ class CrowdSimCL(CrowdSim):
                 goal coordinates: [-1, 0, :]
         """
 
+        # radius of human and robot are constant throughout an episode
         if reset:
-            comfort_distance = np.zeros((self.human_num_range, 1), dtype=np.float32)
-            for human_id in range(self.human_num):
-                comfort_distance[human_id, 0] = self.emotion_comfort_distance[self.humans_emotion[human_id]]
-
             human_radius = np.array(self.humans_radius)
-            radii = self.robot.radius + human_radius
-            radii = np.concatenate((radii, np.zeros((self.human_num_range - self.human_num))), axis=0)
-            radii = radii.reshape(radii.shape[0], 1)
-
-            comfort_radii = radii + comfort_distance
-
-            # Human Extra Information
-            self.human_extra_info = np.concatenate((comfort_radii, radii), axis=1)
-            self.human_extra_info = self.human_extra_info.reshape(1, self.human_extra_info.shape[0],
-                                                                  self.human_extra_info.shape[1])
-            # print("human extra info: {}".format(human_extra_info.shape))
+            self.radii = self.robot.radius + human_radius
+            self.radii = np.concatenate((self.radii, np.zeros((self.human_num_range - self.human_num))), axis=0)
+            self.radii = self.radii.reshape(self.radii.shape[0], 1)
 
         self.update_last_human_states(reset=reset)
 
@@ -284,12 +275,24 @@ class CrowdSimCL(CrowdSim):
                                local_human_past_traj.shape[2]), dtype=np.float32)
         local_human_past_traj = np.concatenate((local_human_past_traj, dummy_traj), axis=1)
 
+        # Human comfort distance
+        comfort_distance = np.zeros((self.human_num_range, 1), dtype=np.float32)
+        for human_id in range(self.human_num):
+            comfort_distance[human_id, 0] = self.emotion_comfort_distance[self.humans_emotion[human_id]]
+
+        comfort_radii = self.radii + comfort_distance
+
+        # Human Extra Information
+        human_extra_info = np.concatenate((comfort_radii, self.radii), axis=1)
+        human_extra_info = human_extra_info.reshape(1, human_extra_info.shape[0],
+                                                    human_extra_info.shape[1])
+
         ### Calculates goal coordinate in local frame
         gx, gy = self.calculate_local_goal()
 
         # print("traj: {}".format(local_relative_human_past_traj.shape))
         ### add radius and human visibility
-        obs = np.concatenate((local_human_past_traj, self.human_extra_info), axis=0)
+        obs = np.concatenate((local_human_past_traj, human_extra_info), axis=0)
         # print("obs1: {}".format(obs.shape))
 
         ### add gx, gy and num_visible_humans
@@ -399,7 +402,14 @@ class CrowdSimCL(CrowdSim):
             humanS = np.array(self.humans[i].get_observable_state_list())
             self.last_human_states[i, :] = humanS
 
+    # Update the humans' emotions in the environment
+    def update_human_emotions_randomly(self):
+        for human in self.humans:
+            if np.random.random() <= self.emotion_change_chance:  # possibility of random emotion changing
+                human.emotion = np.random.choice(list(human.emotions.keys()))
+
     def record_humans_emotion(self):
+        self.humans_emotion = []
         for i in range(self.human_num):
             self.humans_emotion.append(self.humans[i].emotion)
 
@@ -449,14 +459,16 @@ class CrowdSimCL(CrowdSim):
         self.global_time += self.time_step  # max episode length=time_limit/time_step
         self.step_counter = self.step_counter + 1
 
+        # record emotion of humans
+        self.record_humans_emotion()
+
         ##### compute_ob goes here!!!!!
         ob = self.generate_ob(reset=False)
 
-        if self.robot.policy.name in ['srnn']:
-            info = {'info': episode_info}
-        else:  # for orca and sf
-            info = episode_info
-        # info = episode_info
+        # Update all humans' emotions randomly midway through episode
+        if self.random_emotion_changing:
+            if self.global_time % 5 == 0:  # every 5 seconds
+                self.update_human_emotions_randomly()
 
         # Update all humans' goals randomly midway through episode
         if self.random_goal_changing:
@@ -470,7 +482,7 @@ class CrowdSimCL(CrowdSim):
                         (human.gx - human.px, human.gy - human.py)) < human.radius:
                     self.update_human_goal(human)
 
-        return ob, reward, done, info
+        return ob, reward, done, episode_info
 
     def render(self, mode='human'):
         """ Render the current status of the environment using matplotlib """
