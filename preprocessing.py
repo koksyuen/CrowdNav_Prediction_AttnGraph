@@ -50,10 +50,10 @@ def make_env(seed, rank, env_config, envNum=1):
 
 def main():
     config = Config()
-    writer = SummaryWriter("./logs/apf/5ppl")
+    writer = SummaryWriter("./logs/apf/3ppl")
 
     num_cpu = 8  # Number of processes to use
-    seed = 1000
+    seed = int(1e8)
     apf = Preprocessor()
 
     venv = SubprocVecEnv([make_env(seed, i, config, num_cpu) for i in range(num_cpu)])

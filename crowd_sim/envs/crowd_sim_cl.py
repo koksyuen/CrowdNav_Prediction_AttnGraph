@@ -49,8 +49,7 @@ class CrowdSimCL(CrowdSim):
             self.emotion_change_chance = config.humans.emotion_change_chance
 
         self.obs_len = config.sgan.obs_len
-        # self.pred_len = config.sgan.pred_len
-        # self.sgan_model = config.sgan.model_path
+        self.pred_len = config.sgan.pred_len
 
         """" Human states database (include history) for SocialGAN"""
         # queue data structure
@@ -106,11 +105,6 @@ class CrowdSimCL(CrowdSim):
             raise AttributeError('robot has to be set!')
 
         """ SEED FOR RANDOMISATION """
-
-        if self.phase is not None:
-            phase = self.phase
-        if self.test_case is not None:
-            test_case = self.test_case
 
         assert phase in ['train', 'val', 'test']
 
@@ -215,7 +209,7 @@ class CrowdSimCL(CrowdSim):
         elif discomfort:
             # only take one pedestrian (minimum distance) into account
             # adjust the reward based on FPS
-            intruded_distance = min(intruded_distances)
+            intruded_distance = min(intruded_distances)  # negative
             reward = intruded_distance * self.discomfort_penalty_factor * self.time_step
             done = False
             episode_info['type'] = 'discomfort'
@@ -271,6 +265,7 @@ class CrowdSimCL(CrowdSim):
 
         # Human Past Trajectory (local_frame)
         local_human_past_traj = self.global_to_local(self.human_states_record)
+        # local_human_past_traj = self.human_states_record
         dummy_traj = np.zeros((local_human_past_traj.shape[0], self.human_num_range - self.human_num,
                                local_human_past_traj.shape[2]), dtype=np.float32)
         local_human_past_traj = np.concatenate((local_human_past_traj, dummy_traj), axis=1)
@@ -327,7 +322,7 @@ class CrowdSimCL(CrowdSim):
             T_w_r = np.array([[1.0, 0.0, dx],
                               [0.0, 1.0, dy],
                               [0, 0, 1]])  # 2D transformation matrix
-        else:  # unicyle
+        elif self.robot.kinematics == 'unicycle':
             theta = self.robot.theta
             # T ^ w _ r
             T_w_r = np.array([[np.cos(theta), - np.sin(theta), dx],
@@ -358,7 +353,7 @@ class CrowdSimCL(CrowdSim):
             T_w_r = np.array([[1.0, 0.0, dx],
                               [0.0, 1.0, dy],
                               [0, 0, 1]])  # 2D transformation matrix
-        else:  # unicyle
+        elif self.robot.kinematics == 'unicycle':
             theta = self.robot.theta
             # T ^ w _ r
             T_w_r = np.array([[np.cos(theta), - np.sin(theta), dx],
@@ -373,6 +368,45 @@ class CrowdSimCL(CrowdSim):
         traj_local_hom = np.tensordot(traj_global_hom, T_r_w, axes=([2], [1]))
         traj_local = traj_local_hom[:, :, :-1]  # remove the homogeneous coordinate
         return traj_local
+
+    def local_to_global(self, traj_local):
+        """
+        convert coordinates from robot (local) frame to global frame
+        traj_local: array of humans' trajectories (traj_len, num_of_human, 2) in the local (robot) frame
+        :return: array of humans' trajectories (traj_len, num_of_human, 2) in the global frame
+        """
+        dx = self.robot.px
+        dy = self.robot.py
+
+        if self.robot.kinematics == 'holonomic':
+            # T ^ w _ r
+            T_w_r = np.array([[1.0, 0.0, dx],
+                              [0.0, 1.0, dy],
+                              [0, 0, 1]])  # 2D transformation matrix
+        elif self.robot.kinematics == 'unicycle':
+            theta = self.robot.theta
+            # T ^ w _ r
+            T_w_r = np.array([[np.cos(theta), - np.sin(theta), dx],
+                              [np.sin(theta), np.cos(theta), dy],
+                              [0, 0, 1]])  # 2D transformation matrix
+
+        # add the homogeneous coordinate
+        traj_local_hom = np.concatenate([traj_local, np.ones((traj_local.shape[0], traj_local.shape[1], 1))],
+                                        axis=2)
+        traj_global_hom = np.tensordot(traj_local_hom, T_w_r, axes=([2], [1]))
+        traj_global = traj_global_hom[:, :, :-1]  # remove the homogeneous coordinate
+        return traj_global
+
+    # update the robot belief of human coordinates without considering FOV
+    def update_last_human_states(self, reset=False):
+        """
+        update the self.last_human_states array
+        reset: True if this function is called by reset, False if called by step
+        :return:
+        """
+        for i in range(self.human_num):
+            human_property = np.array(self.humans[i].get_observable_state_list())
+            self.last_human_states[i, :] = human_property
 
     # update the human_states_record (queue)
     def update_human_states_record(self, reset):
@@ -390,17 +424,6 @@ class CrowdSimCL(CrowdSim):
             # push latest humans' states into the queue
             self.human_states_record[:-1] = self.human_states_record[1:]
             self.human_states_record[-1] = self.last_human_states[:, :2]
-
-    # update the robot belief of human coordinates without considering FOV
-    def update_last_human_states(self, reset=False):
-        """
-        update the self.last_human_states array
-        reset: True if this function is called by reset, False if called by step
-        :return:
-        """
-        for i in range(self.human_num):
-            humanS = np.array(self.humans[i].get_observable_state_list())
-            self.last_human_states[i, :] = humanS
 
     # Update the humans' emotions in the environment
     def update_human_emotions_randomly(self):
@@ -427,7 +450,7 @@ class CrowdSimCL(CrowdSim):
             vx = normalized_action.vx * self.robot.v_pref
             vy = normalized_action.vy * self.robot.v_pref
             return ActionXY(vx, vy)
-        else:  # unicycle
+        elif self.robot.kinematics == 'unicycle':
             vx = normalized_action.v * self.robot.vx_max
             dtheta = normalized_action.r * self.robot.dtheta_max
             return ActionRot(vx, dtheta)
@@ -442,7 +465,7 @@ class CrowdSimCL(CrowdSim):
         if self.robot.kinematics == 'holonomic':
             normalized_action = ActionXY(raw_action[0], raw_action[1])  # vx, vy
             action = self.rescale_action(normalized_action)
-        else:  # unicycle
+        elif self.robot.kinematics == 'unicycle':
             normalized_action = ActionRot(raw_action[0], raw_action[1])  # v, r
             action = self.rescale_action(normalized_action)
 
@@ -482,7 +505,16 @@ class CrowdSimCL(CrowdSim):
                         (human.gx - human.px, human.gy - human.py)) < human.radius:
                     self.update_human_goal(human)
 
+        # print('theta: {}'.format(self.robot.theta))
+
         return ob, reward, done, episode_info
+
+    def render_traj(self, obs_traj, pred_traj):
+        # self.obs_traj_rel = rel_obs_traj
+        self.obs_traj = self.local_to_global(obs_traj)
+        self.pred_traj = self.local_to_global(pred_traj)
+        # self.pred_traj = pred_traj
+        # self.pred_traj_rel = rel_pred_traj
 
     def render(self, mode='human'):
         """ Render the current status of the environment using matplotlib """
@@ -496,7 +528,7 @@ class CrowdSimCL(CrowdSim):
         goal_color = 'red'
         arrow_color = 'red'
         emotion_color = {'happy': 'green',
-                         'neutral': 'black',
+                         'neutral': 'blue',
                          'angry': 'red'}
         arrow_style = patches.ArrowStyle("->", head_length=4, head_width=2)
 
@@ -609,33 +641,69 @@ class CrowdSimCL(CrowdSim):
             plt.text(-9.8, yy, emotion, color=color, fontsize=12)
             yy -= 0.6
 
-        # # plot history of detected human positions
-        # for i in range(len(self.humans)):
-        #     # Caution: this is actually current human visibility (bcuz render is called after reset or step)
-        #     if self.previous_human_visibility[i]:
-        #         # add history of positions of each human
-        #         for j in range(self.obs_len - 1):
-        #             circle = plt.Circle(self.human_states_record[j][i], self.humans[i].radius,
-        #                                 fill=False, color='tab:olive', linewidth=0.5,
-        #                                 alpha=0.6 * (j + 1) / self.obs_len)
-        #             ax.add_artist(circle)
-        #             artists.append(circle)
-        #
-        # # plot predicted human trajectory
-        # sgan_i = 0
-        # for i in range(len(self.humans)):
-        #     # Caution: this is actually current human visibility (bcuz render is called after reset or step)
-        #     if self.previous_human_visibility[i]:
-        #         # add predicted positions of each human
+        # add comfort distance of each human
+        for human in self.humans:
+            dx = human.px - self.robot.px
+            dy = human.py - self.robot.py
+            closest_dist = (dx ** 2 + dy ** 2) ** (1 / 2) - human.radius - self.robot.radius
+            if closest_dist < self.emotion_comfort_distance[human.emotion]:
+                circle = plt.Circle(human.get_position(), self.emotion_comfort_distance[human.emotion] + human.radius,
+                                    fill=True, color='yellow', linewidth=0.01,
+                                    alpha=0.1)
+            else:
+                circle = plt.Circle(human.get_position(), self.emotion_comfort_distance[human.emotion] + human.radius,
+                                    fill=True, color=emotion_color[human.emotion], linewidth=0.01,
+                                    alpha=0.1)
+            ax.add_artist(circle)
+            artists.append(circle)
+
+        # plot predicted human trajectory
+        # for i, human in enumerate(self.humans):
+        #     # if self.detect_visible(self.robot, human, robot1=True):
+        #         u_init = self.last_human_states[i, :2]
         #         for j in range(self.pred_len):
-        #             circle = plt.Circle(self.predicted_human_states[j][sgan_i], self.humans[i].radius,
-        #                                 fill=False, color='tab:orange', linewidth=1.0,
+        #             u_init = u_init + self.pred_traj_rel[j, i]
+        #             circle = plt.Circle(u_init, human.radius,
+        #                                 fill=False, color='tab:red', linewidth=1.0,
         #                                 alpha=0.8 / (j + 1))
         #             ax.add_artist(circle)
         #             artists.append(circle)
-        #         sgan_i += 1
 
-        plt.pause(0.1)
+        # plot predicted human trajectory
+        for i, human in enumerate(self.humans):
+            # if self.detect_visible(self.robot, human, robot1=True):
+                for j in range(self.pred_len):
+                    circle = plt.Circle(self.pred_traj[j][i], human.radius,
+                                        fill=False, color='tab:orange', linewidth=1.0,
+                                        alpha=0.8 / (j + 1))
+                    ax.add_artist(circle)
+                    artists.append(circle)
+
+        # plot history of detected human positions
+        for i, human in enumerate(self.humans):
+            # if self.detect_visible(self.robot, human, robot1=True):
+                # add history of positions of each human
+                for j in range(self.obs_len - 1):
+                    circle = plt.Circle(self.obs_traj[j][i], human.radius,
+                                        fill=False, color='tab:olive', linewidth=0.5,
+                                        alpha=0.6 * (j + 1) / self.obs_len)
+                    ax.add_artist(circle)
+                    artists.append(circle)
+
+        # plot history of detected human positions
+        # for i, human in enumerate(self.humans):
+        #     # if self.detect_visible(self.robot, human, robot1=True):
+        #     # add history of positions of each human
+        #     p_init = self.human_states_record[0, i]
+        #     for j in range(self.obs_len - 1):
+        #         p_init = p_init + self.obs_traj_rel[j][i]
+        #         circle = plt.Circle(p_init, human.radius,
+        #                             fill=False, color='tab:olive', linewidth=0.5,
+        #                             alpha=0.6 * (j + 1) / self.obs_len)
+        #         ax.add_artist(circle)
+        #         artists.append(circle)
+
+        plt.pause(0.01)
         for item in artists:
             item.remove()  # there should be a better way to do this. For example,
             # initially use add_artist and draw_artist later on

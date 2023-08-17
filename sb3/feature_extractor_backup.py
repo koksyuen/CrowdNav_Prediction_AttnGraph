@@ -6,7 +6,10 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 import sys
 
 sys.path.append('../sgan')
-from predictor_new import socialGAN
+
+from attrdict import AttrDict
+from sgan.models import TrajectoryGenerator
+from sgan.utils import relative_to_abs, torch_abs_to_relative
 
 # Artificial Potential Field Parameters
 KP = 1.0  # attractive potential gain
@@ -40,7 +43,32 @@ class Preprocessor(nn.Module):
             self.decay = self.decay.reshape(1, 1, 1, 1, self.decay.shape[0])
 
             """ Social GAN initialisation """
-            self.traj_predictor = socialGAN(model_path=model_path)
+            checkpoint = torch.load(model_path)
+            args = AttrDict(checkpoint['args'])
+            self.traj_predictor = TrajectoryGenerator(
+                obs_len=args.obs_len,
+                pred_len=args.pred_len,
+                embedding_dim=args.embedding_dim,
+                encoder_h_dim=args.encoder_h_dim_g,
+                decoder_h_dim=args.decoder_h_dim_g,
+                mlp_dim=args.mlp_dim,
+                num_layers=args.num_layers,
+                noise_dim=args.noise_dim,
+                noise_type=args.noise_type,
+                noise_mix_type=args.noise_mix_type,
+                pooling_type=args.pooling_type,
+                pool_every_timestep=args.pool_every_timestep,
+                dropout=args.dropout,
+                bottleneck_dim=args.bottleneck_dim,
+                neighborhood_size=args.neighborhood_size,
+                grid_size=args.grid_size,
+                batch_norm=args.batch_norm)
+            self.traj_predictor.load_state_dict(checkpoint['g_state'])
+            self.traj_predictor.cuda()
+            self.traj_predictor.eval()
+
+            for param in self.traj_predictor.parameters():
+                param.requires_grad = False
 
     def forward(self, observations):
         with torch.no_grad():
@@ -62,6 +90,7 @@ class Preprocessor(nn.Module):
                         seq_start_end.append([start, start + self.human_num])
                     # seq_start_end: (batch_size, 2)
                     self.seq_start_end = torch.tensor(seq_start_end, device='cuda')
+                    print('human_num: {}'.format(self.human_num))
 
             """ data extraction """
             # goal: (batch_size, 2)
@@ -78,21 +107,26 @@ class Preprocessor(nn.Module):
                 obs_traj = observations[:, :-2, :self.human_num, :].permute(0, 2, 1, 3)
                 obs_traj_stack = obs_traj.reshape(obs_traj.shape[0] * obs_traj.shape[1],
                                                   obs_traj.shape[2], obs_traj.shape[3])
-                self.obs_traj_stack = obs_traj_stack.permute(1, 0, 2)
+                obs_traj_stack = obs_traj_stack.permute(1, 0, 2)
 
                 """ Social GAN: pedestrians' trajectories prediction """
-                 # pred_traj: (pred_len, human_num * batch size, 2)
-                self.pred_traj = self.traj_predictor(self.obs_traj_stack, self.seq_start_end)
+                # obs_traj_rel: (obs_len, human_num * batch size, 2)
+                obs_traj_rel = torch_abs_to_relative(obs_traj_stack)
+
+                # pred_traj_rel: (pred_len, human_num * batch size, 2)
+                pred_traj_rel = self.traj_predictor(obs_traj_stack, obs_traj_rel, self.seq_start_end)
+
+                # pred_traj: (pred_len, human_num * batch size, 2)
+                pred_traj = relative_to_abs(rel_traj=pred_traj_rel, start_pos=obs_traj_stack[-1])
 
                 # pred_traj_batch: (batch_size, map_height, map_width, pred_len, human_num, 2)
-                pred_traj = self.pred_traj.permute(1, 0, 2)
+                pred_traj = pred_traj.permute(1, 0, 2)
                 pred_traj_batch = pred_traj.reshape(self.batch_size,
                                                     int(pred_traj.shape[0] / self.batch_size),
                                                     pred_traj.shape[1], pred_traj.shape[2])
                 pred_traj_batch = pred_traj_batch.permute(0, 2, 1, 3)
                 pred_traj_batch = pred_traj_batch.reshape(pred_traj_batch.shape[0], 1, 1, pred_traj_batch.shape[1],
                                                           pred_traj_batch.shape[2], pred_traj_batch.shape[3])
-
 
             """ goal attractive force """
             # ug: (batch size, map_height, map_width)
@@ -194,10 +228,6 @@ class ApfFeaturesExtractor(BaseFeaturesExtractor):
     def get_current_apf(self):
         return self.apf_map
 
-    def get_current_pred_traj(self):
-        return self.apf_generator.pred_traj
-
-    def get_current_obs_traj(self):
-        return self.apf_generator.obs_traj_stack
-
+    # def get_current_pred_traj(self):
+    #     return self.apf_generator.pred_traj
 

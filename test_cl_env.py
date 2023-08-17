@@ -12,9 +12,9 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-# from stable_baselines3 import DQN, PPO, A2C
 from sb3.dqn.dqn import DQN
-from stable_baselines3 import PPO
+# from stable_baselines3 import PPO
+from sb3.ppo.ppo import PPO
 
 from arguments import get_args
 from crowd_nav.configs.config import Config
@@ -28,10 +28,10 @@ def main():
     ax1.set_xlabel('x(m)', fontsize=16)
     ax1.set_ylabel('y(m)', fontsize=16)
 
-    # plt.figure(2)
-    # ax2 = plt.subplot()
-    # ax2.set_xlabel('x (grid)', fontsize=16)
-    # ax2.set_ylabel('y (grid)', fontsize=16)
+    plt.figure(2)
+    ax2 = plt.subplot()
+    ax2.set_xlabel('x (grid)', fontsize=16)
+    ax2.set_ylabel('y (grid)', fontsize=16)
 
     plt.figure(3)
     ax3 = plt.subplot()
@@ -53,15 +53,11 @@ def main():
 
     env = CrowdSimCL()
     env.configure(config)
-    env.setup(seed=90000, num_of_env=1, ax=ax1)
+    env.setup(seed=int(1e8), num_of_env=1, ax=ax1)
 
-    # denv = DiscreteActions(env, discrete_actions)
-    # MODEL_PATH = './train/D3QN_GOAL/POT/best_model.zip'
-    # model = DQN.load(MODEL_PATH, denv)
-
-    MODEL_PATH = './train/PPO_NEW_APF/H10/E001_L0003/best_model.zip'
-    old_model = PPO.load(MODEL_PATH)
-    policy_dict = old_model.policy.state_dict()
+    # MODEL_PATH = './train/PPO_NEW_APF/H10/E001_L0003/best_model.zip'
+    # old_model = PPO.load(MODEL_PATH)
+    # policy_dict = old_model.policy.state_dict()
 
     # FIRST TIME TRAINING
     policy_kwargs = dict(
@@ -70,7 +66,7 @@ def main():
     )
     model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, learning_rate=0.001,
                 device='cuda', batch_size=64, ent_coef=0.01)
-    model.policy.load_state_dict(policy_dict)
+    # model.policy.load_state_dict(policy_dict)
 
     episodes = 10
     for episode in range(1, episodes + 1):
@@ -85,28 +81,31 @@ def main():
         comfort_distances = comfort_distances.reshape(comfort_distances.shape[0], 1)
 
         while not done:
-            # print(obs)
-            plt.figure(1)
-            env.render()
-            # env.render()
-            # action = denv.action_space.sample()
-            # vx, vy = env.calculate_orca()
-            # action = np.array([vx, vy])
+            vx, vy = env.calculate_orca()
+            action = np.array([vx, vy])
             # start_time = time.time()
+            # print(obs[-1, 0])
             action_rl = model.predict(obs, deterministic=True)
-            # print(action_rl[0])
+            apf, pred_traj, obs_traj = model.get_hidden_info()
             # end_time = time.time()
-            # print("action_shape".format(action_rl.shape))
             # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
-            # obs, reward, done, info = env.step(action_rl)
-            obs, reward, done, info = env.step(action_rl[0])
+
+            plt.figure(2)
+            plt.imshow(np.rot90(apf, -1), cmap='gray')
+            plt.pause(0.001)
+
+            plt.figure(1)
+            env.render_traj(obs_traj=obs_traj, pred_traj=pred_traj)
+            env.render()
+
+            # obs, reward, done, info = env.step(action_rl[0])
+            obs, reward, done, info = env.step(action)
+            # obs, reward, done, info = env.step(np.array([0.0, 0.0]))
+
             x = obs[-2, :human_num, 0]
             x = x.reshape(x.shape[0], 1)
             comfort_distances = np.concatenate((comfort_distances, x), axis=1)
-            # obs, reward, done, info = env.step(action_rl[0])
-            # plt.figure(2)
-            # plt.imshow(np.rot90(obs.reshape(obs.shape[1], obs.shape[2]), -1), cmap='gray')
-            # plt.pause(0.01)
+
             # avg_time += (end_time - start_time)
             if info['type'] == 'discomfort':
                 print('discomfort discount: {}'.format(info['discomfort']))
@@ -114,7 +113,6 @@ def main():
             score += reward
             rewards.append(reward)
             cum_rewards.append(score)
-            # rewards.append(score)
         print('Episode:{} Score:{}'.format(episode, score))
         plt.figure(3)
         plt.plot(rewards)
@@ -134,3 +132,8 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # x = [[1.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]
+    # y = np.array(x)
+    # plt.figure(2)
+    # plt.imshow(y, cmap='gray')
+    # plt.show()

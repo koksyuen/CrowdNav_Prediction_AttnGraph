@@ -15,7 +15,7 @@ class Config(object):
 
     # general configs for OpenAI gym env
     env = BaseConfig()
-    env.time_limit = 50 # unit: second
+    env.time_limit = 25 # unit: second
     env.time_step = 0.25 # second per frame
     env.val_size = 100
     env.test_size = 500
@@ -40,7 +40,7 @@ class Config(object):
     sim.circle_radius = 6 * np.sqrt(2)
     sim.arena_size = 6
     # sim.human_num = 10
-    sim.human_num = 15
+    sim.human_num = 3
     # actual human num in each timestep, in [human_num-human_num_range, human_num+human_num_range]
     sim.human_num_range = 15
     sim.predict_steps = 5
@@ -164,11 +164,11 @@ class Config(object):
     sgan.obs_len = 8
     sgan.pred_len = 8
     sgan.map_resolution = 0.05  # meter per grid
-    sgan.model_path = '/home/koksyuen/python_project/sgan/models/sgan-p-models/eth_8_model.pt'
+    sgan.model_path = '/home/koksyuen/python_project/sgan/models/sgan-p-models/univ_8_model.pt'
     # comfort distance boundary (meter) as a function of facial expression
-    sgan.emotions = {'happy': 0.3312,
+    sgan.emotions = {'happy': 0.2193,
                     'neutral': 0.2668,
-                    'angry': 0.2193}
+                    'angry': 0.3312}
 
     # sgan.emotions = {'happy': 0.2668,
     #                 'neutral': 0.2668,

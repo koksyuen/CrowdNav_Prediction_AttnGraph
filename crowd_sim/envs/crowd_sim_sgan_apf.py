@@ -6,6 +6,7 @@ import rvo2
 import random
 import copy
 import time
+import torch
 
 from numpy.linalg import norm
 from crowd_sim.envs import *
@@ -21,7 +22,7 @@ from crowd_sim.envs.utils.state import JointState
 import sys
 
 sys.path.append('/home/koksyuen/python_project/sgan')
-from predictor import socialGAN
+from predictor_new import socialGAN
 
 
 class CrowdSimSganApf(CrowdSim):
@@ -58,8 +59,8 @@ class CrowdSimSganApf(CrowdSim):
         """"""
 
         self.map_resolution = config.sgan.map_resolution
-        map_padding = 1   # meter
-        self.local_map_size = 2*(self.robot.sensor_range + map_padding)
+        map_padding = 1  # meter
+        self.local_map_size = 2 * (self.robot.sensor_range + map_padding)
 
         # artificial potential field (APF)
         self.APF = ArtificialPotentialField(map_size=self.local_map_size,
@@ -89,7 +90,8 @@ class CrowdSimSganApf(CrowdSim):
 
         # print('received object: {}'.format(id(traj_predictor)))
         if traj_predictor is None:
-            self.traj_predictor = socialGAN(model_path=self.sgan_model)
+            # self.traj_predictor = socialGAN(model_path=self.sgan_model)
+            self.traj_predictor = socialGAN()
         else:
             self.traj_predictor = traj_predictor
         # print('stored object: {}'.format(id(self.traj_predictor)))
@@ -242,7 +244,6 @@ class CrowdSimSganApf(CrowdSim):
 
         return float(reward), done, episode_info
 
-
     def generate_ob(self, reset):
         """
         Compute the observation
@@ -252,48 +253,72 @@ class CrowdSimSganApf(CrowdSim):
         # human's state
         visible_human_states, num_visible_humans, human_visibility = self.get_num_human_in_fov()
 
-        self.update_last_human_states(human_visibility, reset=reset)
+        self.update_last_human_states(reset=reset)
 
         self.update_human_states_record(reset=reset)
 
-        self.update_visible_human_states_record(human_visibility, reset=reset)
+        # self.update_visible_human_states_record(human_visibility, reset=reset)
 
         ### Calculates goal coordinate in local frame
         gx, gy = self.calculate_local_goal()
 
+        # SocialGAN: pedestrians' trajectory prediction in global frame
+        # start_time = time.time()
+        num_of_pedestrian = [[0, self.human_num]]
+        seq_start_end = torch.tensor(num_of_pedestrian).cuda()
+
+        xxx = torch.from_numpy(self.human_states_record).cuda()
+        yyy = self.traj_predictor(xxx, seq_start_end)
+        self.predicted_human_states = yyy.cpu().numpy()
+        # end_time = time.time()
+        # print("trajectory prediction time: {}s".format(end_time-start_time))
+
+        # convert predicted trajectory from global frame to local (robot) frame
+        local_predicted_human_states = self.global_to_local(self.predicted_human_states)
+
+        # start_time = time.time()
+        pmap = self.APF.calc_potential_field(gx, gy,
+                                             humans_emotion=np.array(self.humans_emotion),
+                                             pred_humans_traj=local_predicted_human_states,
+                                             rr=self.robot.radius,
+                                             hr=np.array(self.humans_radius),
+                                             detected_human=True)
+        # end_time = time.time()
+        # print("map generation time: {}s".format(end_time-start_time))
+
         ''' Generate local map (includes trajectory prediction) '''
-        if num_visible_humans > 0:  # implement socialGAN only if detected human(s)
-            visible_humans_emotion = np.array(self.humans_emotion)[np.array(human_visibility)]
-            visible_humans_radius = np.array(self.humans_radius)[np.array(human_visibility)]
-
-            # SocialGAN: pedestrians' trajectory prediction in global frame
-            # start_time = time.time()
-            self.predicted_human_states = self.traj_predictor(self.visible_human_states_record)
-            # end_time = time.time()
-            # print("trajectory prediction time: {}s".format(end_time-start_time))
-
-            # convert predicted trajectory from global frame to local (robot) frame
-            local_predicted_human_states = self.global_to_local(self.predicted_human_states)
-
-            # start_time = time.time()
-            pmap = self.APF.calc_potential_field(gx, gy,
-                                        humans_emotion=visible_humans_emotion,
-                                        pred_humans_traj=local_predicted_human_states,
-                                        rr=self.robot.radius,
-                                        hr=visible_humans_radius,
-                                        detected_human=True)
-            # end_time = time.time()
-            # print("map generation time: {}s".format(end_time-start_time))
-        else:
-            # start_time = time.time()
-            pmap = self.APF.calc_potential_field(gx, gy,
-                                        humans_emotion=None,
-                                        pred_humans_traj=None,
-                                        rr=None,
-                                        hr=None,
-                                        detected_human=False)
-            # end_time = time.time()
-            # print("no human map generation time: {}s".format(end_time-start_time))
+        # if num_visible_humans > 0:  # implement socialGAN only if detected human(s)
+        #     visible_humans_emotion = np.array(self.humans_emotion)[np.array(human_visibility)]
+        #     visible_humans_radius = np.array(self.humans_radius)[np.array(human_visibility)]
+        #
+        #     # SocialGAN: pedestrians' trajectory prediction in global frame
+        #     # start_time = time.time()
+        #     self.predicted_human_states = self.traj_predictor(self.visible_human_states_record)
+        #     # end_time = time.time()
+        #     # print("trajectory prediction time: {}s".format(end_time-start_time))
+        #
+        #     # convert predicted trajectory from global frame to local (robot) frame
+        #     local_predicted_human_states = self.global_to_local(self.predicted_human_states)
+        #
+        #     # start_time = time.time()
+        #     pmap = self.APF.calc_potential_field(gx, gy,
+        #                                 humans_emotion=visible_humans_emotion,
+        #                                 pred_humans_traj=local_predicted_human_states,
+        #                                 rr=self.robot.radius,
+        #                                 hr=visible_humans_radius,
+        #                                 detected_human=True)
+        #     # end_time = time.time()
+        #     # print("map generation time: {}s".format(end_time-start_time))
+        # else:
+        #     # start_time = time.time()
+        #     pmap = self.APF.calc_potential_field(gx, gy,
+        #                                 humans_emotion=None,
+        #                                 pred_humans_traj=None,
+        #                                 rr=None,
+        #                                 hr=None,
+        #                                 detected_human=False)
+        #     # end_time = time.time()
+        #     # print("no human map generation time: {}s".format(end_time-start_time))
 
         # record for next step
         self.previous_human_visibility = np.array(human_visibility)
@@ -309,7 +334,6 @@ class CrowdSimSganApf(CrowdSim):
         state = JointState(self.robot.get_full_state(), ob)
         action = self.robot_orca.predict(state)
         return action.vx, action.vy
-
 
     def calculate_local_goal(self):
         """
@@ -341,7 +365,6 @@ class CrowdSimSganApf(CrowdSim):
 
         return local_goal[0], local_goal[1]
 
-
     def global_to_local(self, traj_global):
         """
         convert coordinates from global frame to robot (local) frame
@@ -371,6 +394,17 @@ class CrowdSimSganApf(CrowdSim):
         traj_local_hom = np.tensordot(traj_global_hom, T_r_w, axes=([2], [1]))
         traj_local = traj_local_hom[:, :, :-1]  # remove the homogeneous coordinate
         return traj_local
+
+    # update the robot belief of human coordinates without considering FOV
+    def update_last_human_states(self, reset=False):
+        """
+        update the self.last_human_states array
+        reset: True if this function is called by reset, False if called by step
+        :return:
+        """
+        for i in range(self.human_num):
+            human_property = np.array(self.humans[i].get_observable_state_list())
+            self.last_human_states[i, :] = human_property
 
     # extract visible_human_states_record from human_states_record
     def update_visible_human_states_record(self, human_visibility, reset):
@@ -423,7 +457,6 @@ class CrowdSimSganApf(CrowdSim):
         for i in range(self.human_num):
             self.humans_radius.append(self.humans[i].radius)
 
-
     def rescale_action(self, normalized_action):
         """
         rescale the normalized action to usable action
@@ -434,11 +467,10 @@ class CrowdSimSganApf(CrowdSim):
             vx = normalized_action.vx * self.robot.v_pref
             vy = normalized_action.vy * self.robot.v_pref
             return ActionXY(vx, vy)
-        else:   # unicycle
+        else:  # unicycle
             vx = normalized_action.v * self.robot.vx_max
             dtheta = normalized_action.r * self.robot.dtheta_max
             return ActionRot(vx, dtheta)
-
 
     def step(self, raw_action, update=True):
         """
@@ -448,10 +480,10 @@ class CrowdSimSganApf(CrowdSim):
         # different action format
         # rescale action
         if self.robot.kinematics == 'holonomic':
-            normalized_action = ActionXY(raw_action[0], raw_action[1])   # vx, vy
+            normalized_action = ActionXY(raw_action[0], raw_action[1])  # vx, vy
             action = self.rescale_action(normalized_action)
-        else:   # unicycle
-            normalized_action = ActionRot(raw_action[0], raw_action[1])   # v, r
+        else:  # unicycle
+            normalized_action = ActionRot(raw_action[0], raw_action[1])  # v, r
             action = self.rescale_action(normalized_action)
 
         # humans perform action first
@@ -615,32 +647,32 @@ class CrowdSimSganApf(CrowdSim):
             yy -= 0.6
 
         # plot history of detected human positions
-        for i in range(len(self.humans)):
+        for i, human in enumerate(self.humans):
             # Caution: this is actually current human visibility (bcuz render is called after reset or step)
-            if self.previous_human_visibility[i]:
-                # add history of positions of each human
-                for j in range(self.obs_len - 1):
-                    circle = plt.Circle(self.human_states_record[j][i], self.humans[i].radius,
-                                        fill=False, color='tab:olive', linewidth=0.5,
-                                        alpha=0.6 * (j + 1) / self.obs_len)
-                    ax.add_artist(circle)
-                    artists.append(circle)
+            # if self.previous_human_visibility[i]:
+            # add history of positions of each human
+            for j in range(self.obs_len - 1):
+                circle = plt.Circle(self.human_states_record[j][i], human.radius,
+                                    fill=False, color='tab:olive', linewidth=0.5,
+                                    alpha=0.6 * (j + 1) / self.obs_len)
+                ax.add_artist(circle)
+                artists.append(circle)
 
         # plot predicted human trajectory
-        sgan_i = 0
-        for i in range(len(self.humans)):
+        # sgan_i = 0
+        for i, human in enumerate(self.humans):
             # Caution: this is actually current human visibility (bcuz render is called after reset or step)
-            if self.previous_human_visibility[i]:
-                # add predicted positions of each human
-                for j in range(self.pred_len):
-                    circle = plt.Circle(self.predicted_human_states[j][sgan_i], self.humans[i].radius,
-                                        fill=False, color='tab:orange', linewidth=1.0,
-                                        alpha=0.8 / (j + 1))
-                    ax.add_artist(circle)
-                    artists.append(circle)
-                sgan_i += 1
+            # if self.previous_human_visibility[i]:
+            # add predicted positions of each human
+            for j in range(self.pred_len):
+                circle = plt.Circle(self.predicted_human_states[j][i], human.radius,
+                                    fill=False, color='tab:orange', linewidth=1.0,
+                                    alpha=0.8 / (j + 1))
+                ax.add_artist(circle)
+                artists.append(circle)
+            # sgan_i += 1
 
-        plt.pause(0.01)
+        plt.pause(0.1)
         for item in artists:
             item.remove()  # there should be a better way to do this. For example,
             # initially use add_artist and draw_artist later on
