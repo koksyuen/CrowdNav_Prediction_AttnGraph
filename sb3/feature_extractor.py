@@ -13,17 +13,17 @@ KP = 1.0  # attractive potential gain
 ETA = 4.0  # repulsive potential gain
 # KP = 50.0  # attractive potential gain
 # ETA = 100.0  # repulsive potential gain
-# decay rate with respect to time    0.9^(t-t0)
-DECAY = [1.0, 0.9, 0.81, 0.73, 0.66, 0.59, 0.53, 0.48]
 
 
 class Preprocessor(nn.Module):
     def __init__(self, map_size=10.0, map_resolution=0.05,
-                 model_path='../sgan/models/sgan-p-models/eth_8_model.pt'):
+                 model_path='../sgan/models/sgan-p-models/eth_8_model.pt',
+                 training=True, decay_rate=0.75, pred_len=8):
         super(Preprocessor, self).__init__()
 
         with torch.no_grad():
             """ initialisation """
+            self.training_mode = training
             self.batch_size = None
             self.trial = True
             # center of map
@@ -35,7 +35,10 @@ class Preprocessor(nn.Module):
                                                       torch.linspace(center, -center, width, device='cuda'),
                                                       indexing='ij')
             # Decay Rate with respect to time
-            self.decay = torch.tensor(DECAY, device='cuda')
+            decays = []
+            for i in range(pred_len):
+                decays.append(decay_rate**i)
+            self.decay = torch.tensor(decays, device='cuda')
             # reshape to (batch_size, map_height, map_width, human_num, obs_len)
             self.decay = self.decay.reshape(1, 1, 1, 1, self.decay.shape[0])
 
@@ -48,7 +51,7 @@ class Preprocessor(nn.Module):
             observations = observations.cuda()
 
             """ initialisation based on observations """
-            if self.batch_size != observations.shape[0]:
+            if (self.batch_size != observations.shape[0]) or (not self.training_mode):
                 if self.trial:
                     self.trial = False
                     self.human_num = 0  # dummy
@@ -182,7 +185,6 @@ class ApfFeaturesExtractor(BaseFeaturesExtractor):
                 torch.as_tensor(observation_space.sample()[None]).float()
             ))
             n_flatten = xxx.shape[1]
-            # print(xxx.shape)
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
@@ -195,9 +197,15 @@ class ApfFeaturesExtractor(BaseFeaturesExtractor):
         return self.apf_map
 
     def get_current_pred_traj(self):
-        return self.apf_generator.pred_traj
+        if self.apf_generator.human_num > 0:
+            return self.apf_generator.pred_traj
+        else:
+            return None
 
     def get_current_obs_traj(self):
-        return self.apf_generator.obs_traj_stack
+        if self.apf_generator.human_num > 0:
+            return self.apf_generator.obs_traj_stack
+        else:
+            return None
 
 

@@ -730,8 +730,12 @@ class ActorCriticPolicy(BasePolicy):
         """
         apf = self.features_extractor.get_current_apf().cpu().numpy()
         apf = apf.reshape(apf.shape[-2], apf.shape[-1])
-        return apf, self.features_extractor.get_current_pred_traj().cpu().numpy(), \
-               self.features_extractor.get_current_obs_traj().cpu().numpy()
+        obs_traj = self.features_extractor.get_current_obs_traj()
+        pred_traj = self.features_extractor.get_current_pred_traj()
+        if obs_traj == None and pred_traj == None:
+            return apf, None, None
+        else:
+            return apf, obs_traj.cpu().numpy(), pred_traj.cpu().numpy()
 
 class ActorCriticCnnPolicy(ActorCriticPolicy):
     """

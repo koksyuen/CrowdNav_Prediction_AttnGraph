@@ -9,7 +9,7 @@ import torch
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3 import PPO
+from sb3.ppo.ppo import PPO
 
 from arguments import get_args
 from crowd_nav.configs.config import Config

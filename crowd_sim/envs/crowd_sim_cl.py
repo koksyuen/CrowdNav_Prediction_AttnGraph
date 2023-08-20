@@ -510,11 +510,13 @@ class CrowdSimCL(CrowdSim):
         return ob, reward, done, episode_info
 
     def render_traj(self, obs_traj, pred_traj):
-        # self.obs_traj_rel = rel_obs_traj
-        self.obs_traj = self.local_to_global(obs_traj)
-        self.pred_traj = self.local_to_global(pred_traj)
-        # self.pred_traj = pred_traj
-        # self.pred_traj_rel = rel_pred_traj
+        if isinstance(obs_traj, np.ndarray) and isinstance(pred_traj, np.ndarray):
+            self.plot_traj = True
+            self.obs_traj = self.local_to_global(obs_traj)
+            self.pred_traj = self.local_to_global(pred_traj)
+        else:
+            self.plot_traj = False
+
 
     def render(self, mode='human'):
         """ Render the current status of the environment using matplotlib """
@@ -653,55 +655,48 @@ class CrowdSimCL(CrowdSim):
             else:
                 circle = plt.Circle(human.get_position(), self.emotion_comfort_distance[human.emotion] + human.radius,
                                     fill=True, color=emotion_color[human.emotion], linewidth=0.01,
-                                    alpha=0.1)
+                                    alpha=0.15)
             ax.add_artist(circle)
             artists.append(circle)
 
-        # plot predicted human trajectory
-        # for i, human in enumerate(self.humans):
-        #     # if self.detect_visible(self.robot, human, robot1=True):
-        #         u_init = self.last_human_states[i, :2]
+        if self.plot_traj:
+            for i, human in enumerate(self.humans):
+                dx = human.px - self.robot.px
+                dy = human.py - self.robot.py
+                closest_dist = (dx ** 2 + dy ** 2) ** (1 / 2) - human.radius - self.robot.radius
+                if closest_dist < self.emotion_comfort_distance[human.emotion]:
+                    color = 'yellow'
+                else:
+                    color = emotion_color[human.emotion]
+                # if self.detect_visible(self.robot, human, robot1=True):
+                for j in range(self.pred_len):
+                    circle = plt.Circle(self.pred_traj[j][i], self.emotion_comfort_distance[human.emotion] + human.radius,
+                                        fill=True, color=color, linewidth=0.01,
+                                        alpha=0.15 * 0.8 / (j + 1))
+                    ax.add_artist(circle)
+                    artists.append(circle)
+
+        # if self.plot_traj:
+        #     # plot predicted human trajectory
+        #     for i, human in enumerate(self.humans):
+        #         # if self.detect_visible(self.robot, human, robot1=True):
         #         for j in range(self.pred_len):
-        #             u_init = u_init + self.pred_traj_rel[j, i]
-        #             circle = plt.Circle(u_init, human.radius,
-        #                                 fill=False, color='tab:red', linewidth=1.0,
+        #             circle = plt.Circle(self.pred_traj[j][i], human.radius,
+        #                                 fill=False, color='tab:orange', linewidth=1.0,
         #                                 alpha=0.8 / (j + 1))
         #             ax.add_artist(circle)
         #             artists.append(circle)
 
-        # plot predicted human trajectory
-        for i, human in enumerate(self.humans):
-            # if self.detect_visible(self.robot, human, robot1=True):
-                for j in range(self.pred_len):
-                    circle = plt.Circle(self.pred_traj[j][i], human.radius,
-                                        fill=False, color='tab:orange', linewidth=1.0,
-                                        alpha=0.8 / (j + 1))
-                    ax.add_artist(circle)
-                    artists.append(circle)
-
-        # plot history of detected human positions
-        for i, human in enumerate(self.humans):
-            # if self.detect_visible(self.robot, human, robot1=True):
-                # add history of positions of each human
-                for j in range(self.obs_len - 1):
-                    circle = plt.Circle(self.obs_traj[j][i], human.radius,
-                                        fill=False, color='tab:olive', linewidth=0.5,
-                                        alpha=0.6 * (j + 1) / self.obs_len)
-                    ax.add_artist(circle)
-                    artists.append(circle)
-
-        # plot history of detected human positions
-        # for i, human in enumerate(self.humans):
-        #     # if self.detect_visible(self.robot, human, robot1=True):
-        #     # add history of positions of each human
-        #     p_init = self.human_states_record[0, i]
-        #     for j in range(self.obs_len - 1):
-        #         p_init = p_init + self.obs_traj_rel[j][i]
-        #         circle = plt.Circle(p_init, human.radius,
-        #                             fill=False, color='tab:olive', linewidth=0.5,
-        #                             alpha=0.6 * (j + 1) / self.obs_len)
-        #         ax.add_artist(circle)
-        #         artists.append(circle)
+            # plot history of detected human positions
+            # for i, human in enumerate(self.humans):
+            #     # if self.detect_visible(self.robot, human, robot1=True):
+            #     # add history of positions of each human
+            #     for j in range(self.obs_len - 1):
+            #         circle = plt.Circle(self.obs_traj[j][i], human.radius,
+            #                             fill=False, color='tab:olive', linewidth=0.5,
+            #                             alpha=0.6 * (j + 1) / self.obs_len)
+            #         ax.add_artist(circle)
+            #         artists.append(circle)
 
         plt.pause(0.01)
         for item in artists:

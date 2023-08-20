@@ -53,11 +53,11 @@ def main():
 
     env = CrowdSimCL()
     env.configure(config)
-    env.setup(seed=int(1e8), num_of_env=1, ax=ax1)
+    env.setup(seed=0, num_of_env=1, ax=ax1)
 
-    # MODEL_PATH = './train/PPO_NEW_APF/H10/E001_L0003/best_model.zip'
-    # old_model = PPO.load(MODEL_PATH)
-    # policy_dict = old_model.policy.state_dict()
+    MODEL_PATH = 'train/PPO_FINAL/H10_EMO_D30_G075/E001_L0003/latest_model.zip'
+    old_model = PPO.load(MODEL_PATH)
+    policy_dict = old_model.policy.state_dict()
 
     # FIRST TIME TRAINING
     policy_kwargs = dict(
@@ -66,11 +66,11 @@ def main():
     )
     model = PPO("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=1, learning_rate=0.001,
                 device='cuda', batch_size=64, ent_coef=0.01)
-    # model.policy.load_state_dict(policy_dict)
+    model.policy.load_state_dict(policy_dict)
 
     episodes = 10
     for episode in range(1, episodes + 1):
-        obs = env.reset()
+        obs = env.reset(phase='test')
         done = False
         score = 0
         avg_time = 0
@@ -81,25 +81,25 @@ def main():
         comfort_distances = comfort_distances.reshape(comfort_distances.shape[0], 1)
 
         while not done:
-            vx, vy = env.calculate_orca()
-            action = np.array([vx, vy])
+            # vx, vy = env.calculate_orca()
+            # action = np.array([vx, vy])
             # start_time = time.time()
             # print(obs[-1, 0])
             action_rl = model.predict(obs, deterministic=True)
-            apf, pred_traj, obs_traj = model.get_hidden_info()
+            apf, obs_traj, pred_traj = model.get_hidden_info()
             # end_time = time.time()
             # print("vx: {}   vy: {}".format(action_rl[0], action_rl[1]))
 
-            plt.figure(2)
-            plt.imshow(np.rot90(apf, -1), cmap='gray')
-            plt.pause(0.001)
+            # plt.figure(2)
+            # plt.imshow(np.rot90(apf, -1), cmap='gray')
+            # plt.pause(0.001)
 
             plt.figure(1)
             env.render_traj(obs_traj=obs_traj, pred_traj=pred_traj)
             env.render()
 
-            # obs, reward, done, info = env.step(action_rl[0])
-            obs, reward, done, info = env.step(action)
+            obs, reward, done, info = env.step(action_rl[0])
+            # obs, reward, done, info = env.step(action)
             # obs, reward, done, info = env.step(np.array([0.0, 0.0]))
 
             x = obs[-2, :human_num, 0]
@@ -115,10 +115,12 @@ def main():
             cum_rewards.append(score)
         print('Episode:{} Score:{}'.format(episode, score))
         plt.figure(3)
-        plt.plot(rewards)
+        plt.plot(rewards, label='Episode {}'.format(episode + 1))
+        plt.legend()
         plt.pause(0.01)
         plt.figure(4)
-        plt.plot(cum_rewards)
+        plt.plot(cum_rewards, label='Episode {}'.format(episode + 1))
+        plt.legend()
         plt.pause(0.01)
         plt.figure(5)
         plt.clf()
