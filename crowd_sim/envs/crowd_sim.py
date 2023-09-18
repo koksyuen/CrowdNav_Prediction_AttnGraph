@@ -228,6 +228,8 @@ class CrowdSim(gym.Env):
         if self.randomize_attributes:
             human.sample_random_attributes() # random v_pref (v_max), radius of human & emotion
 
+        # trial_num = 0
+
         while True:
             angle = np.random.random() * np.pi * 2
             # add some noise to simulate all the possible cases robot could meet with human
@@ -237,6 +239,7 @@ class CrowdSim(gym.Env):
             px = self.circle_radius * np.cos(angle) + px_noise
             py = self.circle_radius * np.sin(angle) + py_noise
             collide = False
+            # trial_num += 1
 
             for i, agent in enumerate([self.robot] + self.humans):
                 # keep human at least 3 meters away from robot
@@ -249,6 +252,8 @@ class CrowdSim(gym.Env):
                     collide = True
                     break
             if not collide:
+                # if trial_num > 2:
+                    # print('trial_num: {}'.format(trial_num))
                 break
 
         # px = np.random.uniform(-6, 6)
@@ -465,7 +470,7 @@ class CrowdSim(gym.Env):
                     if h != human:
                         humans_copy.append(h)
 
-
+                # trial_num = 0
                 # Produce valid goal for human in case of circle setting
                 while True: # keep on generating random goal until no collision
                     angle = np.random.random() * np.pi * 2
@@ -476,6 +481,7 @@ class CrowdSim(gym.Env):
                     gx = self.circle_radius * np.cos(angle) + gx_noise
                     gy = self.circle_radius * np.sin(angle) + gy_noise
                     collide = False
+                    # trial_num += 1
 
                     for agent in [self.robot] + humans_copy: # detect collision with robot & other pedestrians
                         min_dist = human.radius + agent.radius + self.discomfort_dist
@@ -483,6 +489,8 @@ class CrowdSim(gym.Env):
                             collide = True
                             break
                     if not collide: # no collision with all other agents
+                        # if trial_num > 1:
+                            # print('trial num: {}'.format(trial_num))
                         break
 
                 # Give human new (valid) goal

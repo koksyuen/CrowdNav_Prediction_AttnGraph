@@ -83,10 +83,11 @@ class CrowdSimCL(CrowdSim):
     def set_robot(self, robot):
         self.robot = robot
 
-    def setup(self, seed, num_of_env, ax=None):
+    def setup(self, seed, num_of_env, ax=None, emotion=True):
         self.thisSeed = seed
         self.nenv = num_of_env
         self.render_axis = ax
+        self.emotion = emotion
 
         # print('received object: {}'.format(id(traj_predictor)))
         # if traj_predictor is None:
@@ -95,11 +96,12 @@ class CrowdSimCL(CrowdSim):
         #     self.traj_predictor = traj_predictor
         # # print('stored object: {}'.format(id(self.traj_predictor)))
 
-    def reset(self, phase='train', test_case=None):
+    def reset(self, phase='train', test_case=None, emotion=True):
         """
         Reset the environment
         :return: observation
         """
+        self.emotion = emotion
 
         if self.robot is None:
             raise AttributeError('robot has to be set!')
@@ -138,6 +140,10 @@ class CrowdSimCL(CrowdSim):
         self.humans_radius = []
         self.global_time = 0
         self.step_counter = 0
+
+        # for report writing
+        self.robot_past_traj = []
+        self.report_record = []
 
         # default time step: 0.25s
         for agent in [self.robot] + self.humans:
@@ -192,6 +198,7 @@ class CrowdSimCL(CrowdSim):
 
         if self.global_time >= self.time_limit - 1:  # reached termination state (time limit for one episode)
             reward = 0
+            episode_info['type'] = 'timeup'
             done = True
 
         elif collision:  # termination state (collision)
@@ -204,7 +211,7 @@ class CrowdSimCL(CrowdSim):
             reward = self.success_reward
             done = True
             episode_info['type'] = 'goal'
-            episode_info['goal'] = reward
+            episode_info['goal'] = self.global_time
 
         elif discomfort:
             # only take one pedestrian (minimum distance) into account
@@ -275,7 +282,10 @@ class CrowdSimCL(CrowdSim):
         for human_id in range(self.human_num):
             comfort_distance[human_id, 0] = self.emotion_comfort_distance[self.humans_emotion[human_id]]
 
-        comfort_radii = self.radii + comfort_distance
+        if self.emotion:
+            comfort_radii = self.radii + comfort_distance
+        else:
+            comfort_radii = self.radii + self.emotion_comfort_distance['neutral']
 
         # Human Extra Information
         human_extra_info = np.concatenate((comfort_radii, self.radii), axis=1)
@@ -509,6 +519,9 @@ class CrowdSimCL(CrowdSim):
 
         return ob, reward, done, episode_info
 
+    def report_recording(self):
+        return np.array(self.report_record)
+
     def render_traj(self, obs_traj, pred_traj):
         if isinstance(obs_traj, np.ndarray) and isinstance(pred_traj, np.ndarray):
             self.plot_traj = True
@@ -559,11 +572,20 @@ class CrowdSimCL(CrowdSim):
         # add robot
         robotX, robotY = self.robot.get_position()
 
+        for coordinate in self.robot_past_traj:
+            robot_past = plt.Circle((coordinate[0], coordinate[1]), self.robot.radius * 0.2, fill=True, color='black', alpha=0.5)
+            ax.add_artist(robot_past)
+            artists.append(robot_past)
+
+        self.robot_past_traj.append([robotX, robotY])
+
+
         robot = plt.Circle((robotX, robotY), self.robot.radius, fill=True, color=robot_color)
         ax.add_artist(robot)
         artists.append(robot)
 
         plt.legend([robot, goal], ['Robot', 'Goal'], fontsize=16)
+        plt.legend(loc='upper right')
 
         # compute orientation in each step and add arrow to show the direction
         radius = self.robot.radius
@@ -637,14 +659,26 @@ class CrowdSimCL(CrowdSim):
             plt.text(self.humans[i].px + 0.2, self.humans[i].py + 0.2, i, color=emotion_color[self.humans[i].emotion],
                      fontsize=12)
 
+        time_msg = 'Time: {}s'.format(self.global_time)
+        plt.text(6.52, -10.8, time_msg, color='black', fontsize=12)
+
         # label of emotion's color (act as description)
-        yy = 9.2
+        yy = 10.2
         for emotion, color in emotion_color.items():
-            plt.text(-9.8, yy, emotion, color=color, fontsize=12)
+            plt.text(-10.8, yy, emotion, color=color, fontsize=12)
             yy -= 0.6
 
-        # add comfort distance of each human
+        timestep_record = []
+        # add comfort record
         for human in self.humans:
+            dx = human.px - self.robot.px
+            dy = human.py - self.robot.py
+            closest_dist = (dx ** 2 + dy ** 2) ** (1 / 2) - human.radius - self.robot.radius
+            timestep_record.append([self.global_time, self.emotion_comfort_distance[human.emotion], closest_dist])
+        self.report_record.append(timestep_record)
+
+        # add comfort distance of each human
+        for i, human in enumerate(self.humans):
             dx = human.px - self.robot.px
             dy = human.py - self.robot.py
             closest_dist = (dx ** 2 + dy ** 2) ** (1 / 2) - human.radius - self.robot.radius
@@ -652,6 +686,8 @@ class CrowdSimCL(CrowdSim):
                 circle = plt.Circle(human.get_position(), self.emotion_comfort_distance[human.emotion] + human.radius,
                                     fill=True, color='yellow', linewidth=0.01,
                                     alpha=0.1)
+                intrusion_msg = 'Robot intrudes {}-th human\'s personal space'.format(i)
+                plt.text(-10.8, -10.8, intrusion_msg, color='red', fontsize=13)
             else:
                 circle = plt.Circle(human.get_position(), self.emotion_comfort_distance[human.emotion] + human.radius,
                                     fill=True, color=emotion_color[human.emotion], linewidth=0.01,
@@ -661,20 +697,21 @@ class CrowdSimCL(CrowdSim):
 
         if self.plot_traj:
             for i, human in enumerate(self.humans):
-                dx = human.px - self.robot.px
-                dy = human.py - self.robot.py
-                closest_dist = (dx ** 2 + dy ** 2) ** (1 / 2) - human.radius - self.robot.radius
-                if closest_dist < self.emotion_comfort_distance[human.emotion]:
-                    color = 'yellow'
-                else:
-                    color = emotion_color[human.emotion]
-                # if self.detect_visible(self.robot, human, robot1=True):
-                for j in range(self.pred_len):
-                    circle = plt.Circle(self.pred_traj[j][i], self.emotion_comfort_distance[human.emotion] + human.radius,
-                                        fill=True, color=color, linewidth=0.01,
-                                        alpha=0.15 * 0.8 / (j + 1))
-                    ax.add_artist(circle)
-                    artists.append(circle)
+                if self.detect_visible(self.robot, human, robot1=True):
+                    dx = human.px - self.robot.px
+                    dy = human.py - self.robot.py
+                    closest_dist = (dx ** 2 + dy ** 2) ** (1 / 2) - human.radius - self.robot.radius
+                    if closest_dist < self.emotion_comfort_distance[human.emotion]:
+                        color = 'yellow'
+                    else:
+                        color = emotion_color[human.emotion]
+                    # if self.detect_visible(self.robot, human, robot1=True):
+                    for j in range(self.pred_len):
+                        circle = plt.Circle(self.pred_traj[j][i], self.emotion_comfort_distance[human.emotion] + human.radius,
+                                            fill=True, color=color, linewidth=0.01,
+                                            alpha=0.15 * 0.8 / (j + 1))
+                        ax.add_artist(circle)
+                        artists.append(circle)
 
         # if self.plot_traj:
         #     # plot predicted human trajectory
@@ -698,7 +735,7 @@ class CrowdSimCL(CrowdSim):
             #         ax.add_artist(circle)
             #         artists.append(circle)
 
-        plt.pause(0.01)
+        plt.pause(0.5)
         for item in artists:
             item.remove()  # there should be a better way to do this. For example,
             # initially use add_artist and draw_artist later on

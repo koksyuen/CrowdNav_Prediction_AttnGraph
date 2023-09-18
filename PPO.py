@@ -61,13 +61,13 @@ def main():
     seed = 0
     venv = SubprocVecEnv([make_env(seed, i, config, num_cpu) for i in range(num_cpu)])
 
-    OLD_MODEL_PATH = 'train/PPO_FINAL/H5_D30_G075/E001_L0003/latest_model.zip'
+    OLD_MODEL_PATH = 'train/PPO_FINAL/H15_D30_G075/E001_L0003/latest_model.zip'
     old_model = PPO.load(OLD_MODEL_PATH)
     policy_dict = old_model.policy.state_dict()
     print(policy_dict)
 
-    CHECKPOINT_DIR = 'train/PPO_FINAL/H10_D30_G075/E001_L0003/'
-    LOG_DIR = 'logs/PPO_FINAL/H10_D30_G075/E001_L0003/'
+    CHECKPOINT_DIR = 'train/PPO_FINAL/H20_D30_G075/E001_L0003/'
+    LOG_DIR = 'logs/PPO_FINAL/H20_D30_G075/E001_L0003/'
 
     # FIRST TIME TRAINING
     policy_kwargs = dict(
@@ -75,7 +75,7 @@ def main():
         features_extractor_kwargs=dict(features_dim=512),
     )
     model = PPO("CnnPolicy", venv, policy_kwargs=policy_kwargs, verbose=1, learning_rate=0.0003,
-                device='cuda', tensorboard_log=LOG_DIR, batch_size=96, ent_coef=0.001)
+                device='cuda', tensorboard_log=LOG_DIR, batch_size=64, ent_coef=0.001)
     model.policy.load_state_dict(policy_dict)
     print(model.policy)
 
